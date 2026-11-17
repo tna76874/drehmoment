@@ -31,9 +31,10 @@ const diag = ref([]) // Kamera-Ereignisse (für Fehlersuche, v. a. iPad/iOS)
 const needTap = ref(false) // play() wurde abgelehnt -> Tippen zum Starten
 function log(msg) { diag.value = [...diag.value.slice(-7), new Date().toLocaleTimeString() + ' ' + msg]; console.info('[Scanner]', msg) }
 // Ansicht: 'camera' = Vollbild-Kamera · 'board' = Kacheln aller Karten groß, Kamera klein in der Ecke
-const view = ref(state.prefs.scanView || 'camera')
+// Start immer in der Übersicht: Kamera klein, Frage + Kacheln groß (vermeidet auch den Größenwechsel des Videos)
+const view = ref('board')
 const showLetters = ref(!!state.prefs.boardLetters)
-watch(view, (v) => { state.prefs.scanView = v; requestAnimationFrame(() => draw(lastCards, lastW, lastH)) })
+watch(view, () => { requestAnimationFrame(() => draw(lastCards, lastW, lastH)) })
 watch(showLetters, (v) => (state.prefs.boardLetters = v))
 const recent = ref({}) // card -> Zeitpunkt der letzten Erfassung (für die Animation)
 let lastCards = [], lastW = 1, lastH = 1
@@ -154,7 +155,16 @@ function loop() {
 
 function grab(v) {
   const dims = v.videoWidth + 'x' + v.videoHeight
-  if (dims !== lastDims) { if (lastDims) imageChanged(); lastDims = dims }
+  if (dims !== lastDims) {
+    // Nur ein Wechsel Hoch-/Querformat ist eine Drehung. Reine Größenänderungen (iOS liefert z. B. eine kleinere
+    // Auflösung, sobald das Video in der Übersicht klein in der Ecke steckt) dürfen die Dreh-Prüfung NICHT auslösen.
+    if (lastDims) {
+      const [pw, ph] = lastDims.split('x').map(Number)
+      log(`Bildformat ${lastDims} → ${dims}`)
+      if ((pw > ph) !== (v.videoWidth > v.videoHeight)) imageChanged()
+    }
+    lastDims = dims
+  }
   const s = Math.min(1, state.prefs.resolution / Math.max(v.videoWidth, v.videoHeight))
   const w = Math.round(v.videoWidth * s), h = Math.round(v.videoHeight * s)
   if (grabCanvas.width !== w) grabCanvas.width = w

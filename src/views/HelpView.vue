@@ -93,7 +93,7 @@ async function poster() {
       <p class="text-sm text-muted">Die Beamer-Ansicht (<Icon name="screen" class="inline size-4" />) öffnet ein zweites Fenster, das der Sitzung automatisch folgt – <b class="text-ink">auf demselben Gerät</b>. Zwei Geräte (z. B. Laptop und Handy) tauschen sich nicht live aus, denn Drehmoment hat bewusst keinen Server.</p>
       <p class="mt-2 text-sm font-semibold">So klappt es mit Beamer:</p>
       <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-muted">
-        <li><b class="text-ink">Handy spiegeln (empfohlen):</b> Sitzung auf dem Handy starten und den Bildschirm per AirPlay, Chromecast/Miracast oder Kabel auf den Beamer bringen. In der Scan-Ansicht zeigt „▦ Übersicht“ groß, wer schon erfasst ist.</li>
+        <li><b class="text-ink">Handy spiegeln (empfohlen):</b> Sitzung auf dem Handy starten und den Bildschirm per AirPlay, Chromecast/Miracast oder Kabel auf den Beamer bringen. Die Scan-Ansicht startet in der Übersicht: Frage und Kacheln groß, wer schon erfasst ist, leuchtet auf; „📷 Kamera“ zeigt das Kamerabild groß.</li>
         <li><b class="text-ink">Nur Laptop:</b> Mit einer USB- oder Dokumentenkamera kann auch der Laptop selbst scannen; die Beamer-Ansicht läuft im zweiten Fenster.</li>
         <li><b class="text-ink">Ergebnisse später zusammenführen:</b> Nach der Stunde auf dem Handy „Auswertung → JSON“ exportieren und am Laptop unter „Mehr → Importieren“ einlesen.</li>
       </ul>

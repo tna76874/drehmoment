@@ -87,9 +87,7 @@ try {
   await page.getByRole('button', { name: 'Scannen' }).click()
   await page.getByText('Erfasst', { exact: true }).waitFor()
   await page.waitForFunction(() => (document.querySelector('.text-3xl.font-extrabold')?.textContent || '').replace(/\s/g, '').startsWith('12/'), null, { timeout: 30000 })
-  await page.waitForTimeout(600)
-  await page.screenshot({ path: SHOTS + '/03-scanner.png' })
-  await page.getByRole('button', { name: 'Übersicht' }).click() // Übersicht: Frage bleibt sichtbar, Kacheln darunter
+  // Scanner startet in der Übersicht: Frage bleibt sichtbar, Kacheln darunter, Kamera klein
   await page.locator('h2.math-text').first().waitFor()
   await page.waitForTimeout(300)
   await page.screenshot({ path: SHOTS + '/03b-scanner-uebersicht.png' })
@@ -99,6 +97,8 @@ try {
   await page.screenshot({ path: SHOTS + '/03c-scanner-uebersicht-ipad.png' })
   await page.setViewportSize(vp)
   await page.getByRole('button', { name: 'Kamera groß' }).click()
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: SHOTS + '/03-scanner.png' })
   await page.getByRole('button', { name: 'Fertig' }).click()
   const sess = await page.evaluate(() => JSON.parse(localStorage.getItem('drehmoment:v1')).sessions[0])
   const got = sess.responses[sess.questions[1].id]
