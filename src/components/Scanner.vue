@@ -61,9 +61,32 @@ function imageChanged() {
   // Bildschirm hat sich gedreht -> Kamerabild dreht mit; erwarteten Buchstaben-Versatz sofort zurückrechnen
   const a = screenAngle(), steps = Math.round((a - lastAngle) / 90)
   lastAngle = a
-  tracker.imageChanged(performance.now(), ((-steps % 4) + 4) % 4)
+  const prior = ((-steps % 4) + 4) % 4
+  screenSteps.value = (screenSteps.value + prior) % 4
+  tracker.imageChanged(performance.now(), prior)
   rotOffset.value = tracker.rotOffset; checking.value = true
 }
+// ---- Angezeigtes Bild aufrecht halten
+// iPadOS dreht das Kamerabild nach dem Lagesensor – auch bei Ausrichtungssperre, während die Oberfläche stehen
+// bleibt. rotOffset k heißt: Bildinhalt ist um k·90° im Uhrzeigersinn gedreht (siehe ROTATION_TO_LETTER in detect.js).
+// Der Anteil, der von einer Drehung der OBERFLÄCHE kommt (screenSteps), ist auf dem Bildschirm schon richtig;
+// den Rest drehen wir in der Anzeige zurück (gegen den Uhrzeigersinn). Die Erkennung arbeitet weiter auf dem Rohbild.
+const screenSteps = ref(0)
+const videoRot = computed(() => (((rotOffset.value - screenSteps.value) % 4) + 4) % 4)
+const camBox = ref(null)
+const boxSize = ref({ w: 0, h: 0 })
+let boxObs = null
+/** Größe/Lage des gedrehten Video-Rahmens im Kamerafeld (W×H) */
+function innerBox(W, H) {
+  const s = videoRot.value, odd = s % 2 === 1
+  return { s, iw: odd ? H : W, ih: odd ? W : H }
+}
+const videoStyle = computed(() => {
+  const { s, iw, ih } = innerBox(boxSize.value.w, boxSize.value.h)
+  if (!s || !iw) return null
+  return { left: '50%', top: '50%', width: iw + 'px', height: ih + 'px', transform: `translate(-50%, -50%) rotate(${-s * 90}deg)` }
+})
+watch(videoRot, () => requestAnimationFrame(() => draw(lastCards, lastW, lastH)))
 function rotateManually() { tracker.rotateManually(); rotOffset.value = tracker.rotOffset; rotHint.value = false; checking.value = false }
 const grabCanvas = document.createElement('canvas')
 const grabCtx = grabCanvas.getContext('2d', { willReadFrequently: true })
@@ -206,10 +229,16 @@ function draw(cards, aw, ah) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cw, ch)
   // object-fit: cover -> Abbildung Analyse-Koordinaten -> Bildschirm
+  // gedrehter Video-Rahmen (iw×ih, mittig, um -s·90° gedreht) -> Punkte genauso drehen
+  const { s, iw, ih } = innerBox(cw, ch)
   const vw = v.videoWidth, vh = v.videoHeight
-  const sc = Math.max(cw / vw, ch / vh), ox = (cw - vw * sc) / 2, oy = (ch - vh * sc) / 2
+  const sc = Math.max(iw / vw, ih / vh), ox = (iw - vw * sc) / 2, oy = (ih - vh * sc) / 2
   const k = vw / aw
-  const P = (p) => [ox + p.x * k * sc, oy + p.y * (vh / ah) * sc]
+  const th = (-s * Math.PI) / 2, cs = Math.round(Math.cos(th)), sn = Math.round(Math.sin(th))
+  const P = (p) => {
+    const x = ox + p.x * k * sc - iw / 2, y = oy + p.y * (vh / ah) * sc - ih / 2
+    return [cw / 2 + x * cs - y * sn, ch / 2 + x * sn + y * cs]
+  }
   for (const c of cards) {
     const known = rosterMap.value.has(c.card) || (props.grow && typeof c.card === 'number')
     const valid = known && c.answer && 'ABCD'.indexOf(c.answer) < props.optionCount
@@ -252,8 +281,13 @@ onMounted(() => {
   try { screen.orientation?.lock?.(screen.orientation.type)?.catch?.(() => {}) } catch {}
   window.addEventListener('orientationchange', onOrient)
   screen.orientation?.addEventListener?.('change', onOrient)
+  if (window.ResizeObserver && camBox.value) {
+    boxObs = new ResizeObserver(([e]) => { boxSize.value = { w: e.contentRect.width, h: e.contentRect.height } })
+    boxObs.observe(camBox.value)
+  }
 })
 onBeforeUnmount(() => {
+  boxObs?.disconnect()
   window.removeEventListener('orientationchange', onOrient)
   screen.orientation?.removeEventListener?.('change', onOrient)
   try { screen.orientation?.unlock?.() } catch {}
@@ -267,12 +301,13 @@ onBeforeUnmount(() => {
 <template>
   <div class="fixed inset-0 z-40 flex flex-col text-white" :class="view === 'board' ? 'bg-[#100e1a]' : 'bg-black'">
     <div
+      ref="camBox"
       :class="view === 'board'
         ? 'absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+96px)] z-20 h-48 w-36 cursor-pointer overflow-hidden rounded-2xl shadow-2xl ring-2 ring-white/40 sm:h-56 sm:w-44'
         : 'absolute inset-0'"
       @click="view === 'board' && (view = 'camera')"
     >
-      <video ref="video" class="absolute inset-0 size-full object-cover" playsinline muted autoplay />
+      <video ref="video" class="absolute max-w-none object-cover" :class="videoStyle ? '' : 'inset-0 size-full'" :style="videoStyle" playsinline muted autoplay />
       <canvas ref="overlay" class="pointer-events-none absolute inset-0 size-full" />
       <span v-if="view === 'board'" class="absolute bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">Tippen = groß</span>
     </div>
@@ -290,7 +325,7 @@ onBeforeUnmount(() => {
         {{ view === 'board' ? '📷 Kamera' : '▦ Übersicht' }}
       </button>
       <button class="flex h-12 items-center gap-1 rounded-full bg-white/15 px-3 text-sm font-bold backdrop-blur" :class="rotOffset ? 'bg-amber-300! text-black' : ''" aria-label="Bezugsrichtung oben drehen" title="Falls alle Antworten um eine Stelle verschoben sind: Bezug „oben“ drehen" @click="rotateManually">
-        <span class="inline-block transition-transform" :style="{ transform: `rotate(${rotOffset * 90}deg)` }">↑</span>Oben
+        <span class="inline-block transition-transform" :style="{ transform: `rotate(${screenSteps * 90}deg)` }">↑</span>Oben
       </button>
       <button v-if="torchCap" class="grid size-12 place-items-center rounded-full bg-white/15 backdrop-blur" :class="torch ? 'bg-yellow-300! text-black' : ''" aria-label="Licht" @click="toggleTorch">⚡</button>
       <button class="h-12 rounded-full bg-white px-6 font-bold text-black shadow-lg" @click="emit('close')">Fertig</button>
@@ -303,7 +338,7 @@ onBeforeUnmount(() => {
 
     <div v-if="checking || rotHint" class="relative mx-4 mt-2 rounded-2xl px-3 py-2 text-center text-sm font-semibold" :class="rotHint ? 'bg-amber-300 text-black' : 'bg-white/15'">
       <template v-if="checking && !rotHint">↻ Kamerabild hat sich gedreht – Ausrichtung wird geprüft …</template>
-      <template v-else>Kamerabild hat sich gedreht. Stimmen die Buchstaben? Sonst „↑ Oben“ antippen, bis A oben ist.</template>
+      <template v-else>Kamerabild hat sich gedreht. Stimmen die Buchstaben? Sonst „↑ Oben“ antippen, bis das Bild aufrecht steht.</template>
     </div>
     <!-- Übersicht: alle Karten als Kacheln, leuchten live auf -->
     <div v-if="view === 'board'" class="relative mt-3 flex-1 overflow-auto px-3 pb-56 sm:pr-52 sm:pb-6">
