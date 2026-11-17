@@ -1,0 +1,37 @@
+{
+  "name": "drehmoment",
+  "private": true,
+  "version": "0.4.0",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tna76874/drehmoment"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build && vite build -c vite.kit.config.js",
+    "preview": "vite preview --host 0.0.0.0",
+    "build:kit": "vite build -c vite.kit.config.js"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "fflate": "^0.8.3",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "jsqr": "^1.4.0",
+    "katex": "^0.16.47",
+    "mathjax-full": "^3.2.2",
+    "qrcode-generator": "^1.4.4",
+    "tailwindcss": "^4.3.5",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "playwright": "^1.65.1",
+    "vite": "^7.0.0"
+  }
+}

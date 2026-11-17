@@ -1,0 +1,208 @@
+# Drehmoment
+
+> Drehmoment ist eine statische Web-App (PWA) für Live-Abstimmungen im Klassenzimmer im Flipped Classroom.
+> Lernende halten gedruckte Antwortkarten hoch; die Lehrkraft scannt die Klasse mit der Handykamera.
+> Welche Kante der Karte oben ist (A, B, C oder D), ist die Antwort. Alle Daten bleiben lokal im Browser.
+
+Diese Datei erklärt KI-Agenten und externen Tools, wie sie Quizze für Drehmoment erzeugen und direkt öffnen.
+Alle Pfade sind relativ zu der Adresse, unter der diese Datei liegt.
+
+## Ressourcen
+
+- [JSON-Schema](drehmoment.schema.json): formales Format eines Quiz
+- [Beispiel-Quiz](example.json): vollständiges Beispiel
+- [App](./): die Web-App selbst
+
+## Quiz-Format (JSON)
+
+```json
+{
+  "app": "drehmoment",
+  "title": "Kurzer Titel",
+  "description": "Ein Satz, worum es geht",
+  "subject": "Fach",
+  "grade": "Klasse 8",
+  "material": "Vorbereitung für zu Hause: Zusammenfassung, Video-Suchbegriffe, Leitfragen",
+  "settings": { "showCorrect": true, "shuffle": false },
+  "questions": [
+    { "type": "mc", "question": "Fragetext?", "options": ["A-Text", "B-Text", "C-Text", "D-Text"], "correct": "B", "explanation": "Warum B stimmt." },
+    { "type": "tf", "question": "Eine Aussage.", "options": ["Wahr", "Falsch"], "correct": "A" },
+    { "type": "poll", "question": "Meinungsfrage?", "options": ["Ja", "Teils", "Nein"] }
+  ]
+}
+```
+
+Regeln:
+- Höchstens 4 Optionen pro Frage (Karten haben nur A–D). Mindestens 2.
+- `type`: `mc` (Multiple Choice), `tf` (Wahr/Falsch, Optionen immer `["Wahr","Falsch"]`), `poll` (Umfrage, kein `correct`).
+- `correct`: Buchstabe `"A"`–`"D"` (empfohlen); auch Index (0–3) oder Liste für mehrere richtige Antworten.
+- Kurze, eindeutige Texte – sie werden projiziert. Richtige Antworten über A–D verteilen.
+- Nur `questions` ist Pflicht. Die App ist tolerant (Aliase wie `text`, `answers`, `choices`, `answer` werden verstanden).
+
+## Abbildungen (seit 0.4)
+
+Bild zur Frage: Feld `graph` (Funktionsgraph/Diagramm – bevorzugt, winzig) oder `svg` (Skizze) oder `image` (Daten-URL `data:image/webp;base64,…`).
+Bilder als Antworten: `options` als Objekte, z. B. `[{"graph":{…}}, {"text":"B","svg":"<svg …>"}]`.
+
+```json
+{ "question": "Wo liegt der Scheitel?", "graph": { "x": [-2, 4], "fn": ["(x-1)^2+2"], "points": [[1, 2, "S"]] }, "options": ["(1|2)", "(2|1)"], "correct": "A" }
+{ "question": "Welcher Graph gehört zu f(x) = 2x − 1?", "options": [{ "graph": { "x": [-3, 3], "fn": ["2x-1"] } }, { "graph": { "x": [-3, 3], "fn": ["-2x+1"] } }], "correct": "A" }
+```
+
+```
+GRAPH-FORMAT – "graph" ist ein JSON-Objekt, die App zeichnet daraus das Koordinatensystem:
+  "x": [xmin, xmax]          sichtbarer x-Bereich (immer angeben)
+  "y": [ymin, ymax]          sichtbarer y-Bereich (weglassen = automatisch)
+  "fn": ["x^2-2", {"f": "sin(x)", "label": "g", "dash": true, "color": "red", "domain": [0, 3], "fill": [1, 2]}]
+                             Funktionen y = f(x). label = Name am Graphen, dash = gestrichelt, color = blue/red/green/orange/purple/black,
+                             domain = nur in diesem x-Bereich zeichnen, fill = Fläche zwischen Graph und x-Achse von a bis b
+  "points": [[x, y, "P"]]    markierte Punkte (Beschriftung optional)
+  "segments": [[x1, y1, x2, y2], [0, 0, 2, 1, "arrow"]]   Strecken, "arrow" = Pfeil (Vektor)
+  "polygons": [[[0, 0], [4, 0], [0, 3]]]   gefüllte Vielecke (Dreiecke, Flächen)
+  "vlines": [2], "hlines": [1]   gestrichelte Hilfslinien x = 2 bzw. y = 1
+  "texts": [[x, y, "Text"]]  freie Beschriftungen
+  "param": [{"x": "2cos(t)", "y": "sin(t)", "t": [0, 6.283]}]   Parameterkurven (Kreis, Ellipse)
+  "bars": {"labels": ["Mo", "Di"], "values": [3, 5]}   Säulendiagramm (statt Koordinatensystem)
+  "grid": "major"            Gitter: "none" (keins), "major" (Hauptlinien, Standard), "minor" (Haupt- + feine Nebenlinien wie Kästchenpapier),
+                             je Achse getrennt: {"x": "minor", "y": "major"}
+  "step": [1, 1]             Abstand der Hauptlinien und Zahlen auf x- bzw. y-Achse (sonst automatisch)
+  "minor": [0.5, 0.5]        Abstand der Nebenlinien (sonst automatisch: 1/5 bzw. 1/4 der Hauptlinien)
+  "equal": true              gleicher Maßstab auf beiden Achsen (Geometrie, Kreise, Vektoren)
+  "lines": [[[0, 0], [2, 4], [6, 4]], {"points": [[0, 1], [6, 1]], "color": "red", "dash": true, "label": "B"}]
+                             Streckenzüge durch Punkte (v-t-Diagramme in Phasen, Messkurven, Treppen)
+ACHSEN (Physik, Sachaufgaben):
+  "xlabel": "t", "xunit": "s", "ylabel": "v", "yunit": "m/s"   -> „t in s“ / „v in m/s“ (Größe kursiv, Einheit aufrecht)
+  "units": "in" | "[]" | "/"   Schreibweise: „t in s“ (Standard), „t [s]“ oder „t / s“
+  Index/Exponent in Namen und Einheiten: "v_0", "v_{max}", "m/s^2", "10^{-3}"
+  Bereich und "step" je Achse passend zur Größenordnung wählen (z. B. "x": [0, 10], "y": [0, 200], "step": [1, 50]).
+
+3D (analytische Geometrie) – statt x/fn ein Objekt "space":
+  "graph": {"space": {
+    "vectors": [{"v": [2, 3, 1], "label": "a"}, {"from": [2, 3, 1], "v": [0, 2, 3], "label": "b", "dash": true}],   Pfeile (ohne from: ab Ursprung)
+    "points": [[2, 5, 4, "P"]],
+    "segments": [[0, 0, 0, 2, 5, 4]]                          Strecken (7. Wert "dash" = gestrichelt)
+    "lines": [{"p": [1, 1, 0], "d": [1, 1, 2], "label": "g"}]   Gerade x = p + t·d (auf den Bereich zugeschnitten)
+    "planes": [{"n": [2, 1, 2], "d": 6, "label": "E"}]         Ebene n·x = d; auch {"p": […], "u": […], "v": […]} oder {"points": [A, B, C]};
+                                                              "trace": true = als Spurdreieck (Schnitt mit den Achsen)
+    "polygons": [[[0, 0, 0], [2, 0, 0], [1, 1, 2]]]           Flächen (Körper aus mehreren Flächen)
+    "range": [-1, 5] oder je Achse "x"/"y"/"z": [min, max]     sichtbarer Bereich (sonst automatisch)
+    "guides": true                                            gestrichelter Koordinatenweg zu Punkten/Vektorspitzen (eindeutig ablesbar)
+    "box": true, "view": [30, 20] (Azimut, Höhe; ohne = Schrägbild wie im Heft), "names": ["x", "y", "z"] (Standard x₁ x₂ x₃)
+  }}
+
+FORMELN in "f", "x", "y" – KEIN LaTeX, keine Wörter:
+  Variable x (in param: t). Rechenzeichen + - * / ^ und runde Klammern. Malpunkt darf fehlen: 2x, 3(x+1), 0.5x^2.
+  Funktionen: sqrt abs exp ln log (=log10) sin cos tan asin acos atan, Betrag |x|. Konstanten pi und e. Winkel im Bogenmaß.
+  Dezimalpunkt: 0.5 (nicht 0,5).
+  richtig: "0.5x^2-2x+1"  "(x-1)^2+2"  "2^x"  "e^(-x)"  "sqrt(x+4)"  "1/(x-2)"  "sin(2x)"  "-|x|+3"
+  falsch:  "\frac{1}{2}x^2"  "x²"  "y = 2x für x > 0" (stattdessen "domain": [0, 5])  "f(x) = …" mit Text
+
+GUTE GRAPHEN:
+  - Achsenbereich so wählen, dass alles Entscheidende sichtbar ist (Nullstellen, Scheitel, Schnittpunkte, Asymptoten), mit etwas Rand.
+  - Soll etwas abgelesen werden: ganzzahlige, gut ablesbare Werte (Scheitel (1|2), nicht (1,37|2,81)).
+  - Gitter passend zur Aufgabe: genaues Ablesen (Werte, Steigungsdreieck, halbe Einheiten) -> "grid": "minor" mit passendem "step"/"minor";
+    Überblick, Kurvenform erkennen, Antwortbilder -> "major"; Skizze/Geometrie ohne Koordinaten -> "none".
+    Unterschiedliche Größenordnungen (z. B. Zeit 0–10 s, Weg 0–200 m) -> eigene "step" je Achse, z. B. [2, 50].
+  - Die Lösung darf nicht im Bild stehen (keine verratende Beschriftung, keine Funktionsterme als label bei Antwortbildern).
+  - Antwortbilder: bei allen Optionen GLEICHER Achsenbereich, klar unterscheidbar, typische Fehler als Distraktoren
+    (Vorzeichen vertauscht, Verschiebung in die falsche Richtung, Steigung und y-Achsenabschnitt verwechselt).
+  - 3D: Punkte/Vektoren mit "guides": true, wenn Koordinaten abgelesen werden sollen; Ebenen mit "trace": true, wenn die Spurpunkte zählen.
+  - Fragemuster: Wert/Nullstelle/Scheitel/Steigung ablesen · „Welcher Graph gehört zu f(x) = …?“ (Antwortbilder)
+    · „Welcher Term gehört zum Graphen?“ (Bild zur Frage, Terme als Antworten) · Fläche unter dem Graphen (fill)
+    · Säulendiagramm auswerten (bars) · Dreieck/Vektor (polygons, segments, equal)
+    · Physik: Diagramm mit Größen/Einheiten deuten (lines, fn, xunit/yunit) · 3D: Vektor/Gerade/Ebene/Lagebeziehung (space).
+  - Vor der Ausgabe jede Formel prüfen: nur erlaubte Zeichen, Klammern vollständig – und passt der Graph wirklich zur richtigen Antwort?
+
+svg: eine einfache, eigenständige Zeichnung "<svg viewBox='0 0 200 150'>…</svg>" – höchstens ~1500 Zeichen,
+  nur Linien/Formen/kurze Beschriftungen, einfache Anführungszeichen ' in Attributen (dann muss im JSON nichts escaped werden),
+  keine eingebetteten Bilder, Schriften, Skripte oder Links. Schwarz auf transparent/weiß, kräftige Linien (stroke-width ≥ 2).
+```
+
+Beispiele: Physik-Diagramm `{"x":[0,10],"y":[0,6],"lines":[[[0,0],[2,4],[6,4],[9,0]]],"xlabel":"t","xunit":"s","ylabel":"v","yunit":"m/s","grid":{"x":"minor","y":"major"}}` · 3D `{"space":{"vectors":[{"v":[2,3,1],"label":"a"}],"planes":[{"n":[2,1,2],"d":6,"label":"E","trace":true}],"guides":true}}`
+Fotos werden für QR-Codes automatisch verkleinert; zwei A4-Seiten fassen ≈ 15 kB Bilddaten.
+- Mehrere Quizze: `{ "sets": [ {…}, {…} ] }`.
+- Formeln in LaTeX zwischen `$…$` (inline) oder `$$…$$` (abgesetzt), auch `\(…\)` / `\[…\]`; Chemie mit `\ce{H2O}`.
+  Im JSON Backslashes verdoppeln: `"$\\frac{1}{2}$"`. (Einfache Backslashes wie `"\frac"` repariert die App beim Import.)
+  Ein echtes Dollarzeichen schreibt man als `\$`; „5 $“ (mit Leerzeichen) bleibt ohnehin Text.
+
+## Fertiges Druckblatt für die Lehrkraft (empfohlen für Agenten)
+
+Ein Agent braucht nur die Basis-Adresse der App (`<BASE>`, die Seite, auf der diese Datei liegt):
+
+`<BASE>#/print?d=<base64url(UTF-8-Quiz-JSON)>`
+
+Die Seite erzeugt sofort ein A4-PDF: Kopf mit Titel, gerahmte Inhaltsübersicht, QR-Code(s) des Quiz
+(höchstens Vorder- und Rückseite). Die Lehrkraft druckt aus, scannt im Unterricht mit „QR scannen“ – das Quiz startet.
+Statt `d=` gehen auch `json=`, `url=`, `b=`, `z=`. Optionen: `&mode=content|link`, `&size=300|500|2000`, `&start=0`.
+
+## Werkzeugkasten: PDFs lokal erzeugen (Node ≥ 18, keine Installation)
+
+```
+curl -O <BASE>kit/drehmoment-kit.mjs
+node drehmoment-kit.mjs quiz quiz.json quiz.pdf          # A4-Blatt mit Quiz-QR-Code(s)
+node drehmoment-kit.mjs cards 1-30 karten.pdf            # Antwortkarten (--per-page 1|2|6, --backs)
+node drehmoment-kit.mjs cards klasse.csv                 # Karten mit Namen aus CSV (Klasse;Nachname;Vorname)
+node drehmoment-kit.mjs link quiz.json --base <BASE>     # Links: Druckseite + Direkt-Import
+node drehmoment-kit.mjs qr quiz.json                     # Inhalt der QR-Codes
+```
+
+Als Modul: `const kit = await import('./drehmoment-kit.mjs')` →
+`kit.quizPdfBytes(quiz, {mode, maxBytes, start})` (Uint8Array), `kit.quizLinks(quiz, base)`, `kit.cardsPdf(cards, perPage)`,
+`kit.qrTexts(set)`, `kit.parseImport(json)`. Erzeugte Codes funktionieren dauerhaft, auch wenn die App umzieht.
+
+## Quiz direkt öffnen (Deep Links)
+
+Ein Agent kann der Lehrkraft einen Link geben. Beim Öffnen zeigt die App eine Vorschau und speichert das Quiz.
+
+- `#/import?url=<URL>` – lädt JSON von einer Adresse (Server muss CORS erlauben, z. B. GitHub-Gist „raw“).
+- `#/import?d=<base64url(UTF-8-JSON)>` – JSON direkt im Link (Base64url, ohne `=`-Auffüllung).
+- `#/import?json=<encodeURIComponent(JSON)>` – JSON URL-kodiert im Link.
+- `#/import?z=<base64url(deflate-raw(kompaktes JSON))>&start=1` – kompaktes Format (siehe unten), bleibt dauerhaft gültig.
+- `#/import?b=<base64url(Paket)>` – Link-Format der App seit 0.2 (siehe unten).
+
+Zusatz `&start=1` (bei `z=`/`b=`): Quiz übernehmen und Live-Sitzung sofort starten.
+Links funktionieren unabhängig vom Host: Der QR-Scanner der App erkennt `#/import?…` in jeder Adresse.
+
+Beispiel: `./#/import?url=https%3A%2F%2Fexample.org%2Fquiz.json`
+
+## QR-Code-Format (kompakt)
+
+Für QR-Codes nutzt die App ein kompaktes JSON, mit `deflate-raw` komprimiert und als base64url kodiert:
+
+```
+{ "v":1, "t":"Titel", "d":"Beschreibung?", "s":"Fach?", "g":"Klasse?", "m":"Material?",
+  "o":[showCorrect 0|1, shuffle 0|1],
+  "q":[ [type, text, options | 0 (=Wahr/Falsch), correctIndizes[], explanation?, bilder?] ] }
+```
+
+`bilder` (seit 0.4, optional; `explanation` ist dann ggf. `""`): `{ "i": Bild zur Frage, "o": [Bild je Antwort | 0] }`,
+Bild = graph-Objekt | `"<svg…"` (ohne xmlns) | `"w:<base64>"` WebP | `"j:"` JPEG | `"p:"` PNG. Ältere Versionen ignorieren das Feld.
+
+Zusatzfeld `"a":1` = nach dem Scannen direkt starten. Unbekannte Felder werden ignoriert.
+
+**QR nur mit Inhalt (Standard der App, ohne Web-Adresse):** `DMQ:<base45(Paket)>.` im alphanumerischen QR-Modus
+(Base45 nach RFC 9285; der Punkt am Ende gehört dazu). Mehrteilig: `DMQ<i>/<n>/<Gruppe>:<base45(Teil)>.` –
+die Teile 1…n hintereinander ergeben das Paket. Gelesen wird über „QR scannen“ oder „Mehr → Text einfügen“.
+
+**Paket** = 1 Byte Codec + Daten. Codec 1 = deflate-raw (Level 9) mit festem Wörterbuch (`src/lib/dict1.js`) über das kompakte JSON.
+
+Für Agenten ist `?d=` oder `?json=` mit dem normalen Format einfacher.
+
+## Kompatibilitätszusage
+
+Alles, was je gedruckt oder geteilt wurde, bleibt lesbar: Antwortkarten (`DM:<n>`, `DM-<ID>`), alle Link-/QR-Formate (`z=`, `b=`, `DMQ…`),
+Exportdateien und gespeicherte Daten (automatische Migration). Formate werden nur ergänzt, nie geändert;
+eingefrorene Beispiele in `test/compat.test.mjs` sichern das bei jedem Build ab.
+
+## Export-/Sicherungsformat
+
+Exportdateien der App haben `"app":"drehmoment"`, `"format":1`, `"content":"questions"|"questions+classes"|"full"` sowie `sets`, optional `classes` (`{id,name,students:[{card,name,gid?}]}`) und `sessions` (Ergebnisse). Solche Dateien können über „Mehr → Importieren“ eingelesen werden.
+
+## Antwortkarten
+
+Jede Karte trägt einen QR-Code (Version 1, Fehlerkorrektur H) mit dem Inhalt `DM:<Nummer>` (1–999).
+Feste Schüler-Karten (seit 0.3): Inhalt `DM-<ID>` mit 7 Zeichen Crockford-Base32 (`0-9A-Z` ohne I, L, O, U), QR alphanumerisch, ebenfalls Version 1-H.
+Gleiche Person = gleiche Karte bei allen Lehrkräften. Die ID kommt per Klassenimport mit: JSON `{"name":"Anna M.","gid":"17DWY6F"}`
+oder kompakt `k:[[klasse, [namen], [karten], [ids|0]]]`. Empfohlene Ableitung aus einer stabilen Kennung:
+die ersten 35 Bit von `SHA-256("drehmoment|" + kennung)` als Crockford-Base32 (MSB zuerst), z. B. `x3k9mpq2` -> `17DWY6F`.
+Die Antwort ergibt sich aus der Drehung: A = normal, B = 90° gegen den Uhrzeigersinn gedreht (rechte Kante oben), C = 180°, D = linke Kante oben.

@@ -1,0 +1,528 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drehmoment.schema.json",
+  "title": "Drehmoment Quiz",
+  "description": "Ein Quiz für Drehmoment (Abstimmung mit gedruckten Antwortkarten A–D). Antworten werden über die Kartenausrichtung erfasst, daher maximal 4 Optionen.",
+  "type": "object",
+  "required": [
+    "questions"
+  ],
+  "properties": {
+    "app": {
+      "const": "drehmoment",
+      "description": "Kennung, empfohlen."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Fach, z. B. Biologie"
+    },
+    "grade": {
+      "type": "string",
+      "description": "Klassenstufe / Niveau"
+    },
+    "material": {
+      "type": "string",
+      "description": "Flipped Classroom: Vorbereitung für zu Hause (Text, Links, Leitfragen). Zeilenumbrüche mit \\n."
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "showCorrect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Richtige Antwort nach dem Scannen aufdecken"
+        },
+        "shuffle": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fragenreihenfolge bei jedem Start mischen"
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "question",
+          "options"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "mc",
+              "tf",
+              "poll"
+            ],
+            "default": "mc",
+            "description": "mc = Multiple Choice, tf = Wahr/Falsch, poll = Umfrage ohne richtige Antwort"
+          },
+          "question": {
+            "type": "string",
+            "description": "Fragetext (Alias: text)"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "graph": {
+                      "$ref": "#/$defs/graph"
+                    },
+                    "svg": {
+                      "type": "string"
+                    },
+                    "image": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "minItems": 2,
+            "maxItems": 4,
+            "description": "Antworten in der Reihenfolge A, B, C, D (Text oder Objekt mit Bild). Bei tf immer [\"Wahr\",\"Falsch\"]."
+          },
+          "graph": {
+            "$ref": "#/$defs/graph"
+          },
+          "svg": {
+            "type": "string",
+            "description": "Skizze als SVG (<svg viewBox=…>…</svg>), einfach halten"
+          },
+          "image": {
+            "type": "string",
+            "description": "Foto als Daten-URL (data:image/webp;base64,…)"
+          },
+          "correct": {
+            "description": "Richtige Antwort(en) als Buchstabe A–D (empfohlen), 0-basierter Index oder Liste davon. Bei poll weglassen.",
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-D]$"
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-D]$"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Kurze Erklärung für die Besprechung"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "graph": {
+      "type": "object",
+      "description": "Graph/Diagramm/3D-Bild, wird in der App gezeichnet. Ausführliche Anleitung: llms.txt, Abschnitt „Abbildungen“.",
+      "properties": {
+        "x": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "y": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "fn": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "f": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "dash": {
+                    "type": "boolean"
+                  },
+                  "color": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "array"
+                  },
+                  "fill": {
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "f"
+                ]
+              }
+            ]
+          }
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          }
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          }
+        },
+        "polygons": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          }
+        },
+        "vlines": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hlines": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          }
+        },
+        "param": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "bars": {
+          "type": "object",
+          "properties": {
+            "labels": {
+              "type": "array"
+            },
+            "values": {
+              "type": "array"
+            }
+          }
+        },
+        "grid": {
+          "oneOf": [
+            {
+              "enum": [
+                "none",
+                "major",
+                "minor",
+                true,
+                false
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "enum": [
+                    "none",
+                    "major",
+                    "minor",
+                    true,
+                    false
+                  ]
+                },
+                "y": {
+                  "enum": [
+                    "none",
+                    "major",
+                    "minor",
+                    true,
+                    false
+                  ]
+                }
+              }
+            }
+          ],
+          "description": "none | major (Standard) | minor (Haupt- + Nebenlinien), auch je Achse"
+        },
+        "equal": {
+          "type": "boolean"
+        },
+        "xlabel": {
+          "type": "string"
+        },
+        "ylabel": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "description": "Streckenzüge: [[[x,y],…]] oder {\"points\":[[x,y],…],\"color\",\"dash\",\"label\"}"
+        },
+        "step": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Abstand Hauptlinien/Zahlen [x, y]"
+        },
+        "minor": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Abstand Nebenlinien [x, y]"
+        },
+        "xunit": {
+          "type": "string",
+          "description": "Einheit der x-Achse, z. B. \"s\" -> „t in s“"
+        },
+        "yunit": {
+          "type": "string",
+          "description": "Einheit der y-Achse, z. B. \"m/s^2\""
+        },
+        "units": {
+          "enum": [
+            "in",
+            "[]",
+            "/"
+          ],
+          "description": "Schreibweise der Einheit"
+        },
+        "space": {
+          "type": "object",
+          "description": "3D (analytische Geometrie): Schrägbild mit x₁, x₂, x₃",
+          "properties": {
+            "vectors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "v": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "from": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string"
+                  },
+                  "dash": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "v"
+                ]
+              }
+            },
+            "points": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "description": "[x, y, z, \"Name\"?]"
+              }
+            },
+            "segments": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "description": "[x1,y1,z1,x2,y2,z2,\"dash\"?]"
+              }
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "p": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "d": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "p",
+                  "d"
+                ]
+              }
+            },
+            "planes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "n·x = d ({\"n\",\"d\"}) oder Parameterform ({\"p\",\"u\",\"v\"}) oder {\"points\":[A,B,C]}; \"trace\": true = Spurdreieck",
+                "properties": {
+                  "n": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "d": {
+                    "type": "number"
+                  },
+                  "p": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "u": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "v": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "points": {
+                    "type": "array"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "trace": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "polygons": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                }
+              }
+            },
+            "range": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "guides": {
+              "type": "boolean"
+            },
+            "box": {
+              "type": "boolean"
+            },
+            "view": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          }
+        }
+      }
+    }
+  }
+}
