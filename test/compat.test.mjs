@@ -236,3 +236,20 @@ ok('Bilder in Fragen (Graph, SVG, Foto) im QR-Paket – auch für ältere Leser 
   assert.equal(GRID_CARD_PATTERNS[16], '1110111111110111111110001', 'Karte 17 (eingefroren, aus dem Original-PDF)')
 }
 ok('Rasterkarten-Muster 1–40 unverändert')
+
+// Anonyme Sitzung: jede erkannte Karte wächst in die Liste – auch feste Schüler-Karten „DM-XXXXXXX“
+{
+  const { addToRoster, byCard } = await import('../src/lib/store.js')
+  const anon = { classId: null, roster: [] }
+  assert.equal(addToRoster(anon, 'DM-K7Q2M9X'), true)
+  assert.equal(addToRoster(anon, 12), true)
+  assert.equal(addToRoster(anon, 3), true)
+  assert.equal(addToRoster(anon, 'DM-K7Q2M9X'), false, 'doppelt')
+  assert.equal(addToRoster(anon, 'DM-ABC'), false, 'ungültig')
+  assert.deepEqual(anon.roster, [{ card: 3, name: '' }, { card: 12, name: '' }, { card: 'DM-K7Q2M9X', name: '', gid: 'K7Q2M9X' }])
+  const cls = { classId: 'c', roster: [{ card: 1, name: 'Ali' }] }
+  assert.equal(addToRoster(cls, 'DM-K7Q2M9X'), true)
+  assert.deepEqual(cls.roster[1], { card: 'DM-K7Q2M9X', name: '', gid: 'K7Q2M9X', guest: true })
+  assert.deepEqual([{ card: 'DM-B' }, { card: 9 }, { card: 'DM-A' }, { card: 2 }].sort(byCard).map((s) => s.card), [2, 9, 'DM-A', 'DM-B'])
+}
+ok('Anonyme Sitzung nimmt auch feste Schüler-Karten auf')

@@ -46,11 +46,13 @@ function draw(n, cx, cy, mod, deg) {
     Y[y * W + x] = mx >= 0 && my >= 0 && mx < size && my < size && m[my][mx] ? 20 : 240
   }
 }
+// Karten 1–10 = Nummernkarten, dazu 2 feste Schüler-Karten (anonyme Sitzung muss auch diese aufnehmen)
+const GIDS = { 11: 'K7Q2M9X', 12: 'A1B2C3D' }
 let n = 1
 for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++, n++) {
   const base = [0, 90, 180, 270][(n * 7) % 4]
-  truth[n] = ROT[base]
-  draw(n, 170 + col * 310, 130 + row * 230, 6.5, base + ((n % 5) - 2) * 5)
+  truth[GIDS[n] ? 'DM-' + GIDS[n] : n] = ROT[base]
+  draw(GIDS[n] || n, 170 + col * 310, 130 + row * 230, 6.5, base + ((n % 5) - 2) * 5)
 }
 for (let i = 0; i < Y.length; i++) Y[i] = Math.max(0, Math.min(255, Y[i] + ((i * 2654435761) % 17) - 8)) // etwas Rauschen
 const frame = Buffer.concat([Buffer.from('FRAME\n'), Buffer.from(Y), Buffer.alloc((W * H) / 2, 128)])
@@ -102,8 +104,9 @@ try {
   await page.getByRole('button', { name: 'Fertig' }).click()
   const sess = await page.evaluate(() => JSON.parse(localStorage.getItem('drehmoment:v1')).sessions[0])
   const got = sess.responses[sess.questions[1].id]
-  assert.deepEqual(Object.fromEntries(Object.entries(got).map(([k, v]) => [+k, v])), truth, 'Antworten aus dem Kamerabild')
-  ok(`Kamera-Scan: alle 12 Karten mit richtiger Antwort erfasst (${Object.values(truth).join('')})`)
+  assert.deepEqual(got, Object.fromEntries(Object.entries(truth)), 'Antworten aus dem Kamerabild')
+  assert.deepEqual(sess.roster.filter((s) => s.gid).map((s) => s.card).sort(), ['DM-A1B2C3D', 'DM-K7Q2M9X'], 'feste Schüler-Karten in der Liste')
+  ok(`Kamera-Scan (anonym): alle 12 Karten inkl. 2 fester Schüler-Karten mit richtiger Antwort erfasst (${Object.values(truth).join('')})`)
 
   await page.getByRole('button', { name: 'Lösung zeigen' }).click()
   await page.screenshot({ path: SHOTS + '/04-live-aufgedeckt.png', fullPage: true })

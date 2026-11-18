@@ -4,7 +4,7 @@ import { loadMathRenderer } from '../lib/mathpdf.js'
 // Auswertung einer Sitzung: Kennzahlen, Fragen, Personen, Export (PDF/CSV/JSON).
 import MathText from '../components/MathText.vue'
 import { ref, computed, watch } from 'vue'
-import { state, getSession } from '../lib/store.js'
+import { state, getSession, byCard } from '../lib/store.js'
 import { route, go } from '../lib/router.js'
 import { sessionStats, reportPdf } from '../lib/pdf.js'
 import { sessionCsv, APP_ID, FORMAT_VERSION } from '../lib/format.js'
@@ -47,7 +47,7 @@ function remove() {
   toast('Sitzung gelöscht')
   go('/')
 }
-const sortedStudents = computed(() => [...st.value.students].sort((a, b) => (b.graded ? b.right / b.graded : -1) - (a.graded ? a.right / a.graded : -1) || a.card - b.card))
+const sortedStudents = computed(() => [...st.value.students].sort((a, b) => (b.graded ? b.right / b.graded : -1) - (a.graded ? a.right / a.graded : -1) || byCard(a, b)))
 const tone = (v) => (v == null ? 'text-muted' : v >= 0.7 ? 'text-ok' : v >= 0.4 ? 'text-ans-c' : 'text-bad')
 </script>
 

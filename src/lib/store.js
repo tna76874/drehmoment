@@ -1,6 +1,7 @@
 // Zentrale Datenhaltung – alles liegt im localStorage des Geräts.
 import { reactive, watch } from 'vue'
 import { repairSetLatex } from './format.js'
+import { canGrow } from './scanlogic.js'
 
 // Schlüssel NIE ändern – sonst findet eine neue Version die alten Daten nicht mehr.
 // Struktur-Änderungen laufen über state.version + MIGRATIONS (unten).
@@ -149,11 +150,14 @@ export function rosterFor(classId) {
 
 /** Unbekannte Karte in die Sitzung aufnehmen (anonym: einfach Karte n; mit Klasse: Gast) */
 export function addToRoster(session, card) {
-  if (typeof card !== 'number' || session.roster.some((s) => s.card === card)) return false
-  session.roster.push({ card, name: '', ...(session.classId ? { guest: true } : {}) })
-  session.roster.sort((a, b) => a.card - b.card)
+  if (!canGrow(card) || session.roster.some((s) => s.card === card)) return false
+  const gid = typeof card === 'string' ? card.slice(3) : null // feste Schüler-Karte „DM-XXXXXXX“
+  session.roster.push({ card, name: '', ...(gid ? { gid } : {}), ...(session.classId ? { guest: true } : {}) })
+  session.roster.sort(byCard)
   return true
 }
+/** Sortierung: Kartennummern aufsteigend, danach feste Schüler-Karten (Text) */
+export const byCard = (a, b) => (typeof a.card === 'number' ? (typeof b.card === 'number' ? a.card - b.card : -1) : typeof b.card === 'number' ? 1 : String(a.card).localeCompare(String(b.card)))
 
 /** @param {{hideNames?:boolean}} o  hideNames: während der Stunde nur Kartennummern zeigen (Beamer, Scanner) */
 export function startSession(setId, classId, { hideNames = false } = {}) {

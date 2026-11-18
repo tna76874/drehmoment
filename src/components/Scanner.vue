@@ -3,7 +3,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { state } from '../lib/store.js'
 import { toast } from '../lib/ui.js'
-import { AnswerTracker } from '../lib/scanlogic.js'
+import { AnswerTracker, canGrow } from '../lib/scanlogic.js'
 import MathText from './MathText.vue'
 import QMedia from './QMedia.vue'
 
@@ -240,7 +240,7 @@ function draw(cards, aw, ah) {
     return [cw / 2 + x * cs - y * sn, ch / 2 + x * sn + y * cs]
   }
   for (const c of cards) {
-    const known = rosterMap.value.has(c.card) || (props.grow && typeof c.card === 'number')
+    const known = rosterMap.value.has(c.card) || (props.grow && canGrow(c.card))
     const valid = known && c.answer && 'ABCD'.indexOf(c.answer) < props.optionCount
     const col = valid ? COLORS[c.answer] : 'rgba(255,255,255,0.8)'
     const pts = c.quad.map(P)
@@ -366,7 +366,8 @@ onBeforeUnmount(() => {
           :style="responses[s.card] && showLetters ? { background: COLORS[responses[s.card]] } : null"
         >
           <span v-if="responses[s.card]" class="absolute top-0.5 right-1 text-[10px] font-extrabold">{{ showLetters ? responses[s.card] : '✓' }}</span>
-          <span class="text-sm leading-none font-extrabold tabular-nums">{{ s.label || s.card }}</span>
+          <span v-if="!s.label && typeof s.card === 'string'" class="text-[11px] leading-none font-extrabold break-all" :title="s.card">🪪 {{ s.card.slice(3) }}</span>
+          <span v-else class="text-sm leading-none font-extrabold tabular-nums">{{ s.label || s.card }}</span>
           <span v-if="s.name" class="mt-0.5 truncate text-[9px] leading-tight font-semibold">{{ s.name }}</span>
         </div>
       </div>

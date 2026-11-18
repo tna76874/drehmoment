@@ -17,6 +17,8 @@ export const PAUSE_MS = 800
 export const CHECK_MS = 3000
 const L = 'ABCD'
 const idx = (l) => L.indexOf(l)
+/** Unbekannte Karte darf die Liste erweitern: Kartennummer (QR „DM:n“ / Rasterkarte) ODER feste Schüler-Karte „DM-XXXXXXX“ */
+export const canGrow = (card) => typeof card === 'number' || (typeof card === 'string' && /^DM-[0-9A-HJKMNP-TV-Z]{7}$/.test(card))
 
 export class AnswerTracker {
   constructor() {
@@ -82,7 +84,7 @@ export class AnswerTracker {
     const emit = []
     for (const c of cards) {
       const isKnown = known(c.card)
-      if (!c.answer || (!isKnown && !(grow && typeof c.card === 'number'))) continue
+      if (!c.answer || (!isKnown && !(grow && canGrow(c.card)))) continue
       if (idx(c.answer) >= optionCount) continue // z. B. „C“ bei Wahr/Falsch
       const cur = responses[c.card]
       if (cur === c.answer) { this.pending.delete(c.card); continue }

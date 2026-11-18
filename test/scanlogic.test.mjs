@@ -1,7 +1,7 @@
 // Antwort-Logik des Scanners: Bilddrehung (iPad), Sperre nach dem Erfassen, Wechsel, neue Karten.
 //   node test/scanlogic.test.mjs
 import assert from 'node:assert/strict'
-import { AnswerTracker, LOCK_MS, CHECK_MS, PAUSE_MS } from '../src/lib/scanlogic.js'
+import { AnswerTracker, canGrow, LOCK_MS, CHECK_MS, PAUSE_MS } from '../src/lib/scanlogic.js'
 
 let ok = 0
 const t = (name, fn) => { fn(); ok++; console.log('  ✓', name) }
@@ -101,12 +101,19 @@ t('zwei Kinder wechseln gleichzeitig ihre Antwort -> kein Fehlalarm, wenn andere
   assert.equal(s.tr.rotOffset, 0)
 })
 
-t('Liste wächst: unbekannte Kartennummer nach 2 Lesungen, feste IDs nie', () => {
+t('Liste wächst (anonym): JEDE Karte – Nummer, Rasterkarte, feste Schüler-Karte – nach 2 Lesungen; Unsinn nie', () => {
   const s = sim({ n: 0, grow: true })
-  s.frame([[27, 'C'], ['DM-ABC', 'A']])
+  const frame = [[27, 'C'], ['DM-K7Q2M9X', 'A'], ['DM-ABC', 'B'], ['xyz', 'D']]
+  s.frame(frame)
   assert.deepEqual(s.responses, {})
-  s.frame([[27, 'C'], ['DM-ABC', 'A']])
-  assert.deepEqual(s.responses, { 27: 'C' })
+  s.frame(frame)
+  assert.deepEqual(s.responses, { 27: 'C', 'DM-K7Q2M9X': 'A' })
+})
+
+t('canGrow: Kartennummern und gültige feste IDs, sonst nichts', () => {
+  assert.equal(canGrow(5), true)
+  assert.equal(canGrow('DM-K7Q2M9X'), true)
+  for (const x of ['DM-ABC', 'DM-K7Q2M9I', '5', null, undefined]) assert.equal(canGrow(x), false, String(x))
 })
 
 t('Antworten jenseits der Optionen (C bei Wahr/Falsch) werden ignoriert', () => {
