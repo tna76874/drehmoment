@@ -2,3 +2,4 @@ node_modules
 dist
 .ai-pod
 test/out
+.dist-pruefung

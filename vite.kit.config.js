@@ -11,7 +11,7 @@ export default defineConfig({
   ssr: { noExternal: true, target: 'node' },
   build: {
     ssr: 'src/kit.js',
-    outDir: 'dist/kit',
+    outDir: (process.env.DM_OUT || 'dist') + '/kit',
     emptyOutDir: false,
     target: 'node18',
     minify: true,

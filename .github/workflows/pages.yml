@@ -24,13 +24,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Tests (Kartenerkennung + PDF)
+      - name: Test-Werkzeuge (Chromium, pdftoppm)
         run: |
-          node test/detect.test.mjs
-          node test/pdf.test.mjs
-          node test/compat.test.mjs
-          node test/csv.test.mjs
-      - run: npm run build
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+          npx playwright install --with-deps chromium
+      - name: Gesicherter Build (alle Unit-, Druck- und Browser-Tests, sonst kein dist/)
+        run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

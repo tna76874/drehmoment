@@ -28,8 +28,8 @@ watch: ## Live-Vorschau mit Auto-Reload in Docker auf http://localhost:$(DEV_POR
 	$(DOCKER) run --rm --init -p $(DEV_PORT):5173 -v "$(CURDIR)":/app:z -w /app $(NODE_IMAGE) \
 		sh -c 'npm install --no-audit --no-fund && npx vite --host 0.0.0.0 --port 5173'
 
-test: ## Tests (Erkennung + PDF) in Docker ausführen
-	$(DOCKER) build --target test -t $(IMAGE)-test .
+test: ## ALLE Tests (Unit + Browser) in Docker ausführen
+	$(DOCKER) build --target build -t $(IMAGE)-test .
 
 ## --- Lokal (ohne Docker, z. B. im ai-pod) ----------------------------
 
@@ -42,24 +42,16 @@ install: node_modules ## npm-Abhängigkeiten installieren
 dev: node_modules ## Vite-Dev-Server starten
 	npx vite --host 0.0.0.0 --port $(DEV_PORT)
 
-build-local: node_modules ## Statische Seite lokal nach ./dist bauen
+build-local: node_modules ## Gesicherter Build: ./dist entsteht NUR, wenn alle Tests bestehen
 	npm run build
 
 preview: build-local ## Lokalen Build per vite preview ausliefern
 	npx vite preview --host 0.0.0.0 --port $(PORT)
 
-test-local: node_modules ## Erkennungs-, PDF-, Kompatibilitäts-, Rasterkarten-, Bild- und Scanner-Tests
-	node test/detect.test.mjs
-	node test/pdf.test.mjs
-	node test/compat.test.mjs
-	node test/csv.test.mjs
-	node test/gridcards.test.mjs
-	node test/media.test.mjs
-	node test/scanlogic.test.mjs
+test-local: node_modules ## Alle Unit-Tests (test/*.test.mjs ohne e2e-*, automatisch gefunden)
+	npm test
 
-e2e-local: build-local ## Browser-Test (Playwright, simulierte Kamera)
-	node test/e2e.test.mjs
-	node test/e2e-media.test.mjs
+e2e-local: build-local ## Alles: Unit-Tests, Build, Browser-Tests (= build-local)
 
 ## --- Sonstiges --------------------------------------------------------
 

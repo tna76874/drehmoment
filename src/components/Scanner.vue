@@ -3,7 +3,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { state } from '../lib/store.js'
 import { toast } from '../lib/ui.js'
-import { AnswerTracker, canGrow } from '../lib/scanlogic.js'
+import { AnswerTracker, canGrow, framePlan, cropRegion, mapQuad, LiveCards, cardMark, joy } from '../lib/scanlogic.js'
 import MathText from './MathText.vue'
 import QMedia from './QMedia.vue'
 
@@ -37,9 +37,7 @@ const showLetters = ref(!!state.prefs.boardLetters)
 watch(view, () => { requestAnimationFrame(() => draw(lastCards, lastW, lastH)) })
 watch(showLetters, (v) => (state.prefs.boardLetters = v))
 // Erfassen verrät NIE die Antwort (keine Antwortfarben, kein Buchstabe) – stattdessen eine kleine Freude-Animation.
-// Das Tier/Symbol ist zufällig und hat nichts mit der Antwort zu tun.
-const JOY = ['⭐', '🌟', '🎉', '🦄', '🚀', '🐱', '🐶', '🦊', '🐼', '🐸', '🌈', '🍀', '🦋', '🐢', '🎈', '🐳', '🦉', '🐝']
-const joy = () => JOY[Math.floor(Math.random() * JOY.length)]
+// Das Tier/Symbol ist zufällig und hat nichts mit der Antwort zu tun (joy() in scanlogic.js).
 const recent = ref({}) // card -> {t, e} letzte Erfassung (für die Animation)
 const bursts = ref([]) // Animationen im Kamerabild: {id, x, y, e, hue}
 let lastCards = [], lastW = 1, lastH = 1, lastP = null, burstId = 0
@@ -58,6 +56,9 @@ function markRecent(card) {
 }
 
 let stream = null, worker = null, raf = 0, busy = false, stopped = false, frameId = 0
+// Bildtakt (ganzes Bild / Zwischenbild an alten Stellen / Bildmitte in voller Auflösung): framePlan in scanlogic.js
+let cycle = 0
+const live = new LiveCards() // zuletzt gesehene Karten (Hinweise + Anzeige)
 
 // ---- Schutz gegen Bilddrehung (v. a. iPad/iOS) und versehentliche Wechsel: siehe lib/scanlogic.js
 // Die Ausrichtung beim START des Scannens gilt. Jede spätere Drehung des Kamerabilds ist ein Fehler und wird
@@ -101,6 +102,9 @@ const videoStyle = computed(() => {
   return { left: '50%', top: '50%', width: iw + 'px', height: ih + 'px', transform: `translate(-50%, -50%) rotate(${-s * 90}deg)` }
 })
 watch(videoRot, () => requestAnimationFrame(() => draw(lastCards, lastW, lastH)))
+// Erfasste Antworten sind fest. „✏️ Ändern“ erlaubt genau EINE Änderung; danach (oder erneut tippen) wieder fest.
+const changeMode = ref(false)
+function toggleChange() { changeMode.value = !changeMode.value; tracker.allowChanges(changeMode.value) }
 function rotateManually() { tracker.rotateManually(); rotOffset.value = tracker.rotOffset; rotHint.value = false; checking.value = false }
 const grabCanvas = document.createElement('canvas')
 const grabCtx = grabCanvas.getContext('2d', { willReadFrequently: true })
@@ -202,26 +206,44 @@ function grab(v) {
     }
     lastDims = dims
   }
-  const s = Math.min(1, state.prefs.resolution / Math.max(v.videoWidth, v.videoHeight))
-  const w = Math.round(v.videoWidth * s), h = Math.round(v.videoHeight * s)
+  const vw = v.videoWidth, vh = v.videoHeight
+  const s = Math.min(1, state.prefs.resolution / Math.max(vw, vh))
+  const w = Math.round(vw * s), h = Math.round(vh * s)
   if (grabCanvas.width !== w) grabCanvas.width = w
   if (grabCanvas.height !== h) grabCanvas.height = h
-  grabCtx.drawImage(v, 0, 0, w, h)
+  const hints = live.hints(performance.now())
+  const mode = framePlan(cycle++, hints.length, s)
+  let map = { ox: 0, oy: 0, k: 1 }
+  if (mode === 'crop') {
+    // gleiche Pixelzahl, aber 1:1 aus der Mitte des Kamerabilds -> weit entfernte Karten haben ~1/s-mal größere Module
+    const c = cropRegion(vw, vh, w, h, s)
+    grabCtx.drawImage(v, c.sx, c.sy, w, h, 0, 0, w, h)
+    map = c.map
+  } else grabCtx.drawImage(v, 0, 0, w, h)
   const img = grabCtx.getImageData(0, 0, w, h)
   busy = true
-  worker.postMessage({ id: ++frameId, gen, buffer: img.data.buffer, width: w, height: h, gridCards: state.prefs.gridCards !== false }, [img.data.buffer])
+  worker.postMessage({
+    id: ++frameId, gen, buffer: img.data.buffer, width: w, height: h, gridCards: state.prefs.gridCards !== false,
+    hints: mode === 'crop' ? null : hints, hintsOnly: mode === 'hints', meta: { map, aw: w, ah: h, mode },
+  }, [img.data.buffer])
 }
 
 function onResult(e) {
   busy = false
-  const { width, height } = e.data
-  ms.value = e.data.ms
-  if (e.data.gen !== gen) return draw([], width, height) // Bild wurde gerade gedreht
-  const raw = e.data.cards.map((c) => ({ ...c, card: toKey(c) }))
-  const r = tracker.process(raw, performance.now(), { responses: props.responses, known: (c) => rosterMap.value.has(c), grow: props.grow, optionCount: props.optionCount })
+  const { map, aw: width, ah: height, mode } = e.data.meta
+  if (mode === 'full') ms.value = e.data.ms
+  if (e.data.gen !== gen) { live.clear(); return draw([], width, height) } // Bild wurde gerade gedreht
+  // Ausschnitt -> Koordinaten des normalen Analysebilds
+  const raw = e.data.cards.map((c) => ({ ...c, card: toKey(c), quad: mapQuad(c.quad, map) }))
+  const now = performance.now()
+  const r = tracker.process(raw, now, { responses: props.responses, known: (c) => rosterMap.value.has(c), grow: props.grow, optionCount: props.optionCount })
   rotOffset.value = tracker.rotOffset; rotHint.value = tracker.hint; checking.value = r.status !== 'ok'
   if (r.corrected) toast('Kamerabild hatte sich gedreht – Ausrichtung vom Start wiederhergestellt')
-  draw(r.status === 'paused' ? [] : r.cards, width, height)
+  if (r.relocked) { changeMode.value = false; toast('Antwort geändert – alle Antworten wieder fest 🔒', 'ok') }
+  // Anzeige: alle zuletzt gesehenen Karten (Zwischenbilder/Ausschnitt sehen nur einen Teil -> kein Flackern)
+  if (r.status === 'paused') live.clear()
+  else live.update(r.cards, now)
+  draw(live.list(now), width, height)
   for (const [card, letter] of r.emit) {
     const first = !props.responses[card]
     emit('answer', card, letter)
@@ -231,7 +253,6 @@ function onResult(e) {
 }
 
 const COLORS = { A: '#ef4452', B: '#3b6cf0', C: '#f29d0b', D: '#16a75c' } // nur für „Antworten zeigen“ (Lehrkraft)
-const SEEN = '#8f7aff' // erfasst – für ALLE Antworten gleich
 function draw(cards, aw, ah) {
   lastCards = cards; lastW = aw; lastH = ah
   const cv = overlay.value, v = video.value
@@ -257,17 +278,13 @@ function draw(cards, aw, ah) {
   lastP = P
   for (const c of cards) {
     const known = rosterMap.value.has(c.card) || (props.grow && canGrow(c.card))
-    const valid = known && c.answer && 'ABCD'.indexOf(c.answer) < props.optionCount
-    const col = valid ? SEEN : 'rgba(255,255,255,0.8)'
+    const { valid, color: col, fill, label } = cardMark(c, { known, entry: rosterMap.value.get(c.card), optionCount: props.optionCount })
     const pts = c.quad.map(P)
     ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath()
-    ctx.fillStyle = valid ? col + '55' : 'rgba(255,255,255,0.15)'; ctx.fill()
+    ctx.fillStyle = fill; ctx.fill()
     ctx.lineWidth = small ? 2 : 3; ctx.strokeStyle = col; ctx.stroke()
     if (small) continue // im kleinen Kamerabild nur Rahmen, keine Namen
     const cx = pts.reduce((a, p) => a + p[0], 0) / 4, cy = pts.reduce((a, p) => a + p[1], 0) / 4
-    const r = rosterMap.value.get(c.card)
-    const who = r ? (r.label ? '' : r.name || '#' + c.card) : known ? '#' + c.card : (c.gid ? c.card : '#' + c.card) + ' ?' // verdeckt: keine Kartennummer
-    const label = valid ? (who ? `✓ ${who}` : '✓') : who // nie den Buchstaben zeigen
     if (!label) continue
     ctx.font = '700 14px system-ui, sans-serif'
     const tw = ctx.measureText(label).width + 16
@@ -358,6 +375,17 @@ onBeforeUnmount(() => {
       <div class="h-full rounded-full bg-gradient-to-r from-[#8f7aff] to-[#ff7aa2] transition-all duration-300" :style="{ width: (roster.length ? (answered / roster.length) * 100 : 0) + '%' }" />
     </div>
 
+    <!-- Antworten fest / eine Änderung erlauben -->
+    <div class="relative mx-4 mt-2 flex">
+      <button
+        class="flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition"
+        :class="changeMode ? 'change-on bg-amber-300 text-black shadow-lg' : 'bg-white/10 text-white/75 hover:bg-white/20'"
+        :aria-pressed="changeMode" data-test="change-toggle" @click="toggleChange"
+      >
+        <template v-if="!changeMode">🔒 Antworten fest · <span class="underline decoration-dotted underline-offset-2">Ändern erlauben</span></template>
+        <template v-else>✏️ Eine Antwort darf sich ändern – Karte neu hochhalten · <span class="underline">Abbrechen</span></template>
+      </button>
+    </div>
     <div v-if="checking || rotHint" class="relative mx-4 mt-2 rounded-2xl px-3 py-2 text-center text-sm font-semibold" :class="rotHint ? 'bg-amber-300 text-black' : 'bg-white/15'">
       <template v-if="checking && !rotHint">↻ Kamerabild hat sich gedreht – Ausrichtung wird geprüft …</template>
       <template v-else>Kamerabild hat sich gedreht. Stimmen die Buchstaben? Sonst „↑ Oben“ antippen, bis das Bild aufrecht steht.</template>
@@ -434,6 +462,8 @@ onBeforeUnmount(() => {
 .pop-enter-active { transition: all 0.25s cubic-bezier(0.3, 1.6, 0.6, 1); }
 .pop-enter-from { transform: scale(1.5); opacity: 0; }
 .pop-tile { animation: tile-pop 1.2s ease-out; }
+.change-on { animation: change-pulse 1.6s ease-in-out infinite; }
+@keyframes change-pulse { 50% { box-shadow: 0 0 0 6px rgb(252 211 77 / 0.35); } }
 .tile-joy { position: absolute; left: 50%; top: 0; font-size: 26px; line-height: 1; pointer-events: none; z-index: 2; animation: tile-joy 1.3s ease-out forwards; }
 @keyframes tile-joy {
   0% { transform: translate(-50%, 10px) scale(0.2) rotate(-20deg); opacity: 0; }

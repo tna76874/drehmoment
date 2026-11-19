@@ -13,7 +13,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 const server = createServer(async (req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname)
   if (p.endsWith('/')) p += 'index.html'
-  try { const body = await readFile(join('dist', p)); res.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); res.end(body) } catch { res.writeHead(404); res.end('nf') }
+  try { const body = await readFile(join(process.env.DM_DIST || 'dist', p)); res.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); res.end(body) } catch { res.writeHead(404); res.end('nf') }
 })
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const BASE = `http://localhost:${server.address().port}/`

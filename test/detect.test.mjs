@@ -117,16 +117,84 @@ t('Karte formatfüllend vor der Kamera (QR fast über das ganze Bild)', () => {
     assert.equal(r.length, 1); assert.equal(r[0].card, 11); assert.equal(r[0].answer, EXPECT[base])
   }
 })
+t('zwei große Karten nah an der Kamera gleichzeitig (verkleinerter Suchlauf)', () => {
+  for (const base of [0, 90, 180, 270]) {
+    const img = new Uint8ClampedArray(W * H * 4).fill(50)
+    drawMatrix(img, cardFace(3).m, 330, 360, 22, base + 4, 1, 2); drawMatrix(img, cardFace('17DWY6F').m, 950, 360, 21, base - 5, 1, 2); camera(img, 20)
+    const r = detectCards(img, W, H)
+    const got = Object.fromEntries(r.map((x) => [x.gid || x.card, x.answer]))
+    assert.deepEqual(got, { 3: EXPECT[base], '17DWY6F': EXPECT[base] }, `${base}°`)
+  }
+})
+t('Hinweise aus dem letzten Bild: schnelles Zwischenbild liest Karten an der alten Stelle (auch leicht verschoben)', () => {
+  const img = blank(); draw(img, 7, 400, 300, 9, 90); draw(img, 8, 900, 400, 9, 180); camera(img, 20)
+  const full = detectCards(img, W, H)
+  assert.equal(full.length, 2)
+  const moved = blank(); draw(moved, 7, 420, 288, 9, 96); draw(moved, 8, 885, 410, 9, 176); camera(moved, 20)
+  const fast = detectCards(moved, W, H, { hints: full.map((c) => c.quad), hintsOnly: true })
+  assert.deepEqual(Object.fromEntries(fast.map((c) => [c.card, c.answer])), { 7: 'D', 8: 'C' })
+  assert.deepEqual(detectCards(blank(), W, H, { hints: full.map((c) => c.quad), hintsOnly: true }), [], 'Karte weg -> nichts')
+  const both = detectCards(moved, W, H, { hints: [full[0].quad] })
+  assert.equal(both.length, 2, 'mit Hinweisen + Suche: alle Karten')
+})
+t('kaputte/unsinnige Hinweise stören nicht (außerhalb des Bilds, leer, entartet, NaN)', () => {
+  const img = blank(); draw(img, 9, 640, 360, 9, 270); camera(img, 20)
+  const junk = [[], null, [{ x: -500, y: -500 }, { x: -400, y: -500 }, { x: -400, y: -400 }, { x: -500, y: -400 }],
+    [{ x: 5000, y: 5000 }, { x: 6000, y: 5000 }, { x: 6000, y: 6000 }, { x: 5000, y: 6000 }],
+    [{ x: 10, y: 10 }, { x: 10, y: 10 }, { x: 10, y: 10 }, { x: 10, y: 10 }],
+    [{ x: NaN, y: 1 }, { x: 2, y: NaN }, { x: 3, y: 3 }, { x: 1, y: 3 }], [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }]]
+  const r = detectCards(img, W, H, { hints: junk })
+  assert.deepEqual(r.map((c) => [c.card, c.answer]), [[9, 'B']])
+  const fast = detectCards(img, W, H, { hints: junk.slice(0, 6), hintsOnly: true })
+  assert.deepEqual(fast, [], 'nur Unsinn als Hinweis -> nichts')
+})
+t('keine Phantomkarten in Bildern ohne Karten (Rauschen, Streifen, Schachbrett, Text-ähnliche Blöcke, fremde QR-Codes)', () => {
+  let seed = 11
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32)
+  const imgs = []
+  { const f = blank(); for (let i = 0; i < f.length; i += 4) f[i] = f[i + 1] = f[i + 2] = rnd() * 255; imgs.push(f) }
+  { const f = blank(); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const o = (y * W + x) * 4; f[o] = f[o + 1] = f[o + 2] = (x >> 3) % 2 ? 20 : 235 } imgs.push(f) }
+  { const f = blank(); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const o = (y * W + x) * 4; f[o] = f[o + 1] = f[o + 2] = ((x >> 4) + (y >> 4)) % 2 ? 20 : 235 } imgs.push(f) }
+  for (let k = 0; k < 4; k++) {
+    const f = blank()
+    for (let i = 0; i < 400; i++) { const x0 = rnd() * W, y0 = rnd() * H, w = 3 + rnd() * 40, h = 3 + rnd() * 25, g = rnd() < 0.5 ? 20 : 240
+      for (let y = y0; y < Math.min(H, y0 + h); y++) for (let x = x0; x < Math.min(W, x0 + w); x++) { const o = (Math.floor(y) * W + Math.floor(x)) * 4; f[o] = f[o + 1] = f[o + 2] = g } }
+    camera(f, 20); imgs.push(f)
+  }
+  for (const data of ['DMQ:R80:U00.6S', 'DM:1000', 'DM*7', 'DM-17DWY6U', 'hallo']) {
+    const qr = qrcode(0, 'M'); qr.addData(data); qr.make()
+    const m = Array.from({ length: qr.getModuleCount() }, (_, r) => Array.from({ length: qr.getModuleCount() }, (_, c) => qr.isDark(r, c)))
+    const f = blank(); drawMatrix(f, m, 640, 360, 9, 0); camera(f, 20); imgs.push(f)
+  }
+  imgs.forEach((f, i) => assert.deepEqual(detectCards(f, W, H), [], `Bild ${i}`))
+})
+t('Zeitbudget + Zwischenbilder: ganze Klasse < 1,5 s; Zwischenbild liest (fast) alle Karten und ist schneller (6 Durchläufe)', () => {
+  let missed = 0, total = 0, tFull = 0, tFast = 0
+  for (let run = 0; run < 6; run++) {
+    const img = blank()
+    for (let n = 1; n <= 32; n++) drawMatrix(img, cardFace(n).m, 80 + ((n - 1) % 8) * 160, 90 + Math.floor((n - 1) / 8) * 180, 4 + (run % 3) * 0.6, 7 - run * 3)
+    camera(img)
+    let t0 = performance.now(); const full = detectCards(img, W, H); const dFull = performance.now() - t0
+    t0 = performance.now(); const fast = detectCards(img, W, H, { hints: full.map((c) => c.quad), hintsOnly: true }); const dFast = performance.now() - t0
+    assert.ok(full.length >= 30, `Vollbild ${full.length}/32`)
+    assert.ok(dFull < 1500, `Vollbild ${dFull} ms`)
+    for (const c of fast) assert.equal(c.answer, full.find((f) => f.card === c.card)?.answer, `Karte ${c.card}: Zwischenbild = Vollbild`)
+    missed += full.length - fast.length; total += full.length; tFull += dFull; tFast += dFast
+  }
+  assert.ok(missed <= 1, `Zwischenbilder verpassen ${missed} von ${total} Karten`)
+  assert.ok(tFast < tFull * 0.8, `Zwischenbild ${Math.round(tFast / 6)} ms vs. Vollbild ${Math.round(tFull / 6)} ms`)
+  console.log(`      Ø Vollbild ${Math.round(tFull / 6)} ms · Ø Zwischenbild ${Math.round(tFast / 6)} ms · verpasst ${missed}/${total}`)
+})
 
-console.log('Ganze Klasse (32 Karten, kleine Module, zufällige Antworten), 5 Durchläufe:')
+console.log('Ganze Klasse (32 Karten, kleine Module, zufällige Antworten), 6 Durchläufe (abwechselnd alte/gedrehte Karten):')
 let worst = 99, maxMs = 0
-for (let run = 0; run < 5; run++) {
+for (let run = 0; run < 6; run++) {
   const img = blank(), truth = {}
   let n = 1
   for (let row = 0; row < 4; row++) for (let col = 0; col < 8; col++, n++) {
     const base = [0, 90, 180, 270][Math.floor(Math.random() * 4)]
     truth[n] = EXPECT[base]
-    draw(img, n, 80 + col * 160, 90 + row * 180, 3.6 + Math.random() * 1.2, base + (Math.random() - 0.5) * 30)
+    drawMatrix(img, run % 2 ? cardFace(n).m : cardMatrix(n), 80 + col * 160, 90 + row * 180, 3.6 + Math.random() * 1.2, base + (Math.random() - 0.5) * 30) // abwechselnd alte und gedrehte Karten
   }
   camera(img)
   const t0 = Date.now(); const r = detectCards(img, W, H); const ms = Date.now() - t0

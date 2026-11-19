@@ -23,7 +23,7 @@ const server = createServer(async (req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname)
   if (p.endsWith('/')) p += 'index.html'
   try {
-    const body = await readFile(join('dist', p))
+    const body = await readFile(join(process.env.DM_DIST || 'dist', p))
     res.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); res.end(body)
   } catch { res.writeHead(404); res.end('nf') }
 })

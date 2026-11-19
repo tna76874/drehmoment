@@ -3,17 +3,21 @@
 ARG NODE_IMAGE=node:24-bookworm-slim
 ARG NGINX_IMAGE=nginx:1.28-alpine
 
-# --- build stage: Abhängigkeiten installieren und vite build ---
+# --- build stage: Abhängigkeiten, Test-Werkzeuge und GESICHERTER Build ---
+# npm run build = Unit-Tests -> vite build (Zwischenstand) -> Browser-/Druck-Tests -> erst dann dist/.
+# Schlägt ein Test fehl, scheitert das Image – es gibt kein fertiges dist/ und kein Laufzeit-Image.
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
+ENV DM_IN_DOCKER=1
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+RUN npx playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN npm run build
 
-# --- test stage: Erkennungs- und PDF-Tests (make test) ---
+# --- test stage (Kompatibilität: make test) – identisch mit build, das schon alle Tests enthält ---
 FROM build AS test
-RUN node test/detect.test.mjs && node test/pdf.test.mjs && node test/compat.test.mjs && node test/csv.test.mjs && node test/gridcards.test.mjs && node test/media.test.mjs && node test/scanlogic.test.mjs
 
 # --- export stage: nur die statischen Dateien (make dist) ---
 FROM scratch AS export

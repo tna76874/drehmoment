@@ -67,7 +67,7 @@ async function poster() {
         <li>Langsam schwenken – erkannte Karten werden markiert (ohne die Antwort zu verraten).</li>
         <li>In großen Räumen hilft der Zoom. Die Karten sind immer groß (1 pro A4-Seite).</li>
         <li>Gegenlicht vermeiden; matte Laminierfolie spiegelt weniger.</li>
-        <li>Antwort geändert? Einfach erneut scannen – die neue Antwort zählt. Direkt nach dem Erfassen ist eine Karte 2 Sekunden gesperrt (Karte herunternehmen ändert nichts).</li>
+        <li>Erfasste Antworten sind <b>fest</b> – wer seine Karte später noch einmal hochhält oder dreht, ändert nichts. Will jemand umentscheiden: im Scanner „🔒 Antworten fest · Ändern erlauben“ antippen, die Person hält die Karte neu hoch – sobald die neue Antwort erfasst ist, ist automatisch wieder alles fest (oder „Abbrechen“).</li>
         <li>Die Ausrichtung beim Start des Scannens gilt. Dreht sich das Kamerabild (z. B. iPad), rechnet Drehmoment das anhand der schon erfassten Karten zurück.</li>
       </ul>
     </section>

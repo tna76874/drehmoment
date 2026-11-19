@@ -7,3 +7,4 @@ Dockerfile
 .dockerignore
 Makefile
 test/out
+.dist-pruefung

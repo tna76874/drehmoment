@@ -240,7 +240,7 @@ function decodeCrop(data, width, height, quad) {
   const minY = Math.max(0, Math.floor(Math.min(...quad.map((p) => p.y))))
   const maxY = Math.min(height - 1, Math.ceil(Math.max(...quad.map((p) => p.y))))
   const cw = maxX - minX + 1, ch = maxY - minY + 1
-  if (cw < 21 || ch < 21) return null
+  if (!(cw >= 21 && ch >= 21)) return null // auch NaN
   const crop = new Uint8ClampedArray(cw * ch * 4).fill(255)
   const sign = quadSign(quad)
   for (let y = 0; y < ch; y++) {
@@ -301,31 +301,53 @@ export function detectGridCards(gray, bin, width, height, tolerance = 30) {
   return [...found.values()]
 }
 
+/** Hinweis-Viereck brauchbar? (4 endliche Punkte, nicht entartet) */
+const validQuad = (q) => Array.isArray(q) && q.length === 4 && q.every((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)) &&
+  Math.abs(q[0].x - q[2].x) + Math.abs(q[0].y - q[2].y) > 4
+
+/** Viereck um seinen Mittelpunkt um den Faktor f vergrößern */
+function expandQuad(q, f) {
+  const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4, cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4
+  return q.map((p) => ({ x: cx + (p.x - cx) * f, y: cy + (p.y - cy) * f }))
+}
+
 /**
  * Findet alle Drehmoment-Karten (und Rasterkarten 1–40) in einem RGBA-Bild.
  * @returns {{card:number|null, gid:string|null, answer:'A'|'B'|'C'|'D'|null, angle:number, quad:{x,y}[], gridCard?:true}[]}
  *   card = Nummernkarte „DM:n“ bzw. Rasterkarte n · gid = feste Schüler-Karte „DM-XXXXXXX“ (dann card = null)
  *   opts.gridCards = false schaltet die Rasterkarten-Erkennung ab
+ *   opts.hints = Vierecke (quad) von Karten aus dem letzten Bild: dort wird ZUERST direkt gelesen
+ *     (übersteht Bewegungsunschärfe, an der die Suchmuster-Suche scheitert)
+ *   opts.hintsOnly = nur an den Hinweis-Stellen lesen (schnelles Zwischenbild, keine Suche im ganzen Bild)
  */
 export function detectCards(data, width, height, opts = {}) {
-  const { tolerance = 30, gridCards = true } = opts
+  const { tolerance = 30, gridCards = true, hints = null, hintsOnly = false } = opts
+  const found = new Map()
+  const add = (r) => { const res = r && toResult(r, tolerance); if (res && !found.has(res.gid || res.card)) found.set(res.gid || res.card, res); return !!res }
+  // 0. Karten aus dem letzten Bild an ihrer alten Stelle lesen (etwas Spielraum für Bewegung)
+  if (Array.isArray(hints)) for (const q of hints.slice(0, 64)) if (validQuad(q)) add(decodeCrop(data, width, height, expandQuad(q, 1.3))) || add(decodeCrop(data, width, height, expandQuad(q, 1.6)))
+  if (hintsOnly) return [...found.values()]
+  // Suchmuster-Dreieck liegt in einer schon gelesenen Karte -> nicht noch einmal dekodieren
+  const covered = ([, q, r]) => {
+    const x = (q.x + r.x) / 2, y = (q.y + r.y) / 2
+    for (const c of found.values()) if (c.quad && insideQuad(c.quad, x, y, quadSign(c.quad))) return true
+    return false
+  }
+  const decodeGroup = (g) => { if (!covered(g)) add(decodeCrop(data, width, height, tripleQuad(g, 3))) || add(decodeCrop(data, width, height, tripleQuad(g, 5))) }
   const gray = toGray(data, width, height)
   const bin = binarize(gray, width, height)
-  const pats = findFinderPatterns(bin, width, height)
-  const groups = groupPatterns(pats)
-  const found = new Map()
-  for (const g of groups) {
-    let r = decodeCrop(data, width, height, tripleQuad(g, 3))
-    if (!r) r = decodeCrop(data, width, height, tripleQuad(g, 5))
-    const res = r && toResult(r, tolerance)
-    if (res && !found.has(res.gid || res.card)) found.set(res.gid || res.card, res)
+  for (const g of groupPatterns(findFinderPatterns(bin, width, height))) decodeGroup(g)
+  // 1b. verkleinert mit großem Fenster: große Karten nah an der Kamera (die schwarze Mitte der Suchmuster ist
+  //     dort breiter als das Binarisierungs-Fenster und zerfiele sonst). Dekodiert wird in voller Auflösung.
+  {
+    const f = Math.max(2, Math.round(Math.min(width, height) / 240))
+    const s = shrink(gray, width, height, f)
+    const sb = binarize(s.g, s.w, s.h, Math.max(8, Math.round(Math.min(s.w, s.h) / 8)))
+    const up = (p) => ({ x: p.x * f + (f - 1) / 2, y: p.y * f + (f - 1) / 2, module: p.module * f })
+    for (const g of groupPatterns(findFinderPatterns(sb, s.w, s.h))) decodeGroup(g.map(up))
   }
   if (gridCards) for (const p of detectGridCards(gray, bin, width, height, tolerance)) if (!found.has(p.card)) found.set(p.card, p)
   // Fallback: einzelne große Karte direkt vor der Kamera
-  if (found.size === 0) {
-    const r = jsQR(data, width, height, { inversionAttempts: 'dontInvert' })
-    const res = r && toResult(r, tolerance)
-    if (res) found.set(res.gid || res.card, res)
-  }
+  if (found.size === 0) add(jsQR(data, width, height, { inversionAttempts: 'dontInvert' }))
   return [...found.values()]
 }
