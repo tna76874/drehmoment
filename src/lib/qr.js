@@ -1,15 +1,15 @@
 import qrcode from 'qrcode-generator'
-import { CARD_PREFIX } from './detect.js'
-import { GID_PREFIX } from './gid.js'
+import { cardCode, cardRotation } from './cardcode.js'
 
 /**
- * Modul-Matrix (true = schwarz). Version 1, Fehlerkorrektur H -> große, robuste Module.
- * @param {number|string} n  Kartennummer („DM:n“, Byte-Modus – NIE ändern) oder Schüler-ID („DM-XXXXXXX“, alphanumerisch)
+ * Modul-Matrix des QR-Codes (true = schwarz), so wie er GELESEN wird. Version 1, Fehlerkorrektur H.
+ * @param {number|string} n  Kartennummer oder Schüler-ID (7 Zeichen)
+ * @param {number} rot  Dreh-Versatz im QR-Inhalt (0 = alte Formate „DM:n“/„DM-ID“, NIE ändern)
  */
-export function cardMatrix(n) {
+export function cardMatrix(n, rot = 0) {
+  const { text, mode } = cardCode(n, rot)
   const qr = qrcode(1, 'H')
-  if (typeof n === 'string') qr.addData(GID_PREFIX + n, 'Alphanumeric')
-  else qr.addData(CARD_PREFIX + n)
+  qr.addData(text, mode)
   qr.make()
   const size = qr.getModuleCount()
   const m = []
@@ -21,9 +21,20 @@ export function cardMatrix(n) {
   return m
 }
 
-/** SVG-Pfad (viewBox = size x size) */
-export function cardPath(n) {
-  const m = cardMatrix(n)
+/** Matrix um k·90° im Uhrzeigersinn drehen */
+export function rotateCW(m, k = 1) {
+  for (let i = 0; i < ((k % 4) + 4) % 4; i++) { const n = m.length; m = m.map((_, r) => m.map((__, c) => m[n - 1 - c][r])) }
+  return m
+}
+
+/** Matrix, wie sie auf der Karte GEDRUCKT wird (A oben): QR um rot·90° im Uhrzeigersinn gedreht */
+export function cardFace(n, rot = cardRotation(n)) {
+  return { m: rotateCW(cardMatrix(n, rot), rot), rot }
+}
+
+/** SVG-Pfad der gedruckten Karte (viewBox = size x size) */
+export function cardPath(n, rot) {
+  const { m } = cardFace(n, rot)
   let d = ''
   m.forEach((row, y) => row.forEach((dark, x) => { if (dark) d += `M${x} ${y}h1v1h-1z` }))
   return { d, size: m.length }

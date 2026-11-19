@@ -36,11 +36,25 @@ const view = ref('board')
 const showLetters = ref(!!state.prefs.boardLetters)
 watch(view, () => { requestAnimationFrame(() => draw(lastCards, lastW, lastH)) })
 watch(showLetters, (v) => (state.prefs.boardLetters = v))
-const recent = ref({}) // card -> Zeitpunkt der letzten Erfassung (für die Animation)
-let lastCards = [], lastW = 1, lastH = 1
+// Erfassen verrät NIE die Antwort (keine Antwortfarben, kein Buchstabe) – stattdessen eine kleine Freude-Animation.
+// Das Tier/Symbol ist zufällig und hat nichts mit der Antwort zu tun.
+const JOY = ['⭐', '🌟', '🎉', '🦄', '🚀', '🐱', '🐶', '🦊', '🐼', '🐸', '🌈', '🍀', '🦋', '🐢', '🎈', '🐳', '🦉', '🐝']
+const joy = () => JOY[Math.floor(Math.random() * JOY.length)]
+const recent = ref({}) // card -> {t, e} letzte Erfassung (für die Animation)
+const bursts = ref([]) // Animationen im Kamerabild: {id, x, y, e, hue}
+let lastCards = [], lastW = 1, lastH = 1, lastP = null, burstId = 0
 function markRecent(card) {
-  recent.value = { ...recent.value, [card]: Date.now() }
+  const e = joy()
+  recent.value = { ...recent.value, [card]: { t: Date.now(), e } }
   setTimeout(() => { const r = { ...recent.value }; delete r[card]; recent.value = r }, 1400)
+  const c = lastCards.find((k) => k.card === card)
+  if (c && lastP) {
+    const pts = c.quad.map(lastP), id = ++burstId
+    const x = pts.reduce((a, p) => a + p[0], 0) / 4, y = pts.reduce((a, p) => a + p[1], 0) / 4
+    const size = Math.max(28, Math.min(120, Math.hypot(pts[0][0] - pts[2][0], pts[0][1] - pts[2][1]) * 0.45))
+    bursts.value = [...bursts.value.slice(-24), { id, x, y, e, size, hue: Math.floor(Math.random() * 360) }]
+    setTimeout(() => { bursts.value = bursts.value.filter((b) => b.id !== id) }, 1300)
+  }
 }
 
 let stream = null, worker = null, raf = 0, busy = false, stopped = false, frameId = 0
@@ -207,16 +221,17 @@ function onResult(e) {
   const r = tracker.process(raw, performance.now(), { responses: props.responses, known: (c) => rosterMap.value.has(c), grow: props.grow, optionCount: props.optionCount })
   rotOffset.value = tracker.rotOffset; rotHint.value = tracker.hint; checking.value = r.status !== 'ok'
   if (r.corrected) toast('Kamerabild hatte sich gedreht – Ausrichtung vom Start wiederhergestellt')
+  draw(r.status === 'paused' ? [] : r.cards, width, height)
   for (const [card, letter] of r.emit) {
     const first = !props.responses[card]
     emit('answer', card, letter)
     markRecent(card)
     if (first) { flash.value++; if (state.prefs.vibrate) navigator.vibrate?.(25) }
   }
-  draw(r.status === 'paused' ? [] : r.cards, width, height)
 }
 
-const COLORS = { A: '#ef4452', B: '#3b6cf0', C: '#f29d0b', D: '#16a75c' }
+const COLORS = { A: '#ef4452', B: '#3b6cf0', C: '#f29d0b', D: '#16a75c' } // nur für „Antworten zeigen“ (Lehrkraft)
+const SEEN = '#8f7aff' // erfasst – für ALLE Antworten gleich
 function draw(cards, aw, ah) {
   lastCards = cards; lastW = aw; lastH = ah
   const cv = overlay.value, v = video.value
@@ -239,10 +254,11 @@ function draw(cards, aw, ah) {
     const x = ox + p.x * k * sc - iw / 2, y = oy + p.y * (vh / ah) * sc - ih / 2
     return [cw / 2 + x * cs - y * sn, ch / 2 + x * sn + y * cs]
   }
+  lastP = P
   for (const c of cards) {
     const known = rosterMap.value.has(c.card) || (props.grow && canGrow(c.card))
     const valid = known && c.answer && 'ABCD'.indexOf(c.answer) < props.optionCount
-    const col = valid ? COLORS[c.answer] : 'rgba(255,255,255,0.8)'
+    const col = valid ? SEEN : 'rgba(255,255,255,0.8)'
     const pts = c.quad.map(P)
     ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath()
     ctx.fillStyle = valid ? col + '55' : 'rgba(255,255,255,0.15)'; ctx.fill()
@@ -251,7 +267,7 @@ function draw(cards, aw, ah) {
     const cx = pts.reduce((a, p) => a + p[0], 0) / 4, cy = pts.reduce((a, p) => a + p[1], 0) / 4
     const r = rosterMap.value.get(c.card)
     const who = r ? (r.label ? '' : r.name || '#' + c.card) : known ? '#' + c.card : (c.gid ? c.card : '#' + c.card) + ' ?' // verdeckt: keine Kartennummer
-    const label = valid ? (who ? `${c.answer} · ${who}` : c.answer) : who
+    const label = valid ? (who ? `✓ ${who}` : '✓') : who // nie den Buchstaben zeigen
     if (!label) continue
     ctx.font = '700 14px system-ui, sans-serif'
     const tw = ctx.measureText(label).width + 16
@@ -309,6 +325,12 @@ onBeforeUnmount(() => {
     >
       <video ref="video" class="absolute max-w-none object-cover" :class="videoStyle ? '' : 'inset-0 size-full'" :style="videoStyle" playsinline muted autoplay />
       <canvas ref="overlay" class="pointer-events-none absolute inset-0 size-full" />
+      <div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div v-for="b in bursts" :key="b.id" class="burst" :style="{ left: b.x + 'px', top: b.y + 'px', '--s': (view === 'board' ? Math.min(b.size, 40) : b.size) + 'px', '--h': b.hue + 'deg' }">
+          <i v-for="k in 8" :key="k" class="spark" :style="{ '--a': k * 45 + 'deg' }" />
+          <span class="joy">{{ b.e }}</span>
+        </div>
+      </div>
       <span v-if="view === 'board'" class="absolute bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">Tippen = groß</span>
     </div>
 
@@ -366,6 +388,7 @@ onBeforeUnmount(() => {
           :style="responses[s.card] && showLetters ? { background: COLORS[responses[s.card]] } : null"
         >
           <span v-if="responses[s.card]" class="absolute top-0.5 right-1 text-[10px] font-extrabold">{{ showLetters ? responses[s.card] : '✓' }}</span>
+          <span v-if="recent[s.card]" class="tile-joy" aria-hidden="true">{{ recent[s.card].e }}</span>
           <span v-if="!s.label && typeof s.card === 'string'" class="text-[11px] leading-none font-extrabold break-all" :title="s.card">🪪 {{ s.card.slice(3) }}</span>
           <span v-else class="text-sm leading-none font-extrabold tabular-nums">{{ s.label || s.card }}</span>
           <span v-if="s.name" class="mt-0.5 truncate text-[9px] leading-tight font-semibold">{{ s.name }}</span>
@@ -411,6 +434,27 @@ onBeforeUnmount(() => {
 .pop-enter-active { transition: all 0.25s cubic-bezier(0.3, 1.6, 0.6, 1); }
 .pop-enter-from { transform: scale(1.5); opacity: 0; }
 .pop-tile { animation: tile-pop 1.2s ease-out; }
+.tile-joy { position: absolute; left: 50%; top: 0; font-size: 26px; line-height: 1; pointer-events: none; z-index: 2; animation: tile-joy 1.3s ease-out forwards; }
+@keyframes tile-joy {
+  0% { transform: translate(-50%, 10px) scale(0.2) rotate(-20deg); opacity: 0; }
+  30% { transform: translate(-50%, -18px) scale(1.25) rotate(8deg); opacity: 1; }
+  70% { transform: translate(-50%, -26px) scale(1) rotate(-4deg); opacity: 1; }
+  100% { transform: translate(-50%, -40px) scale(0.8); opacity: 0; }
+}
+.burst { position: absolute; width: 0; height: 0; }
+.joy { position: absolute; left: 0; top: 0; font-size: var(--s); line-height: 1; transform: translate(-50%, -50%); animation: joy 1.25s cubic-bezier(0.3, 1.5, 0.5, 1) forwards; filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.35)); }
+@keyframes joy {
+  0% { transform: translate(-50%, -50%) scale(0) rotate(-30deg); opacity: 0; }
+  35% { transform: translate(-50%, -60%) scale(1.2) rotate(10deg); opacity: 1; }
+  65% { transform: translate(-50%, -70%) scale(1) rotate(-6deg); opacity: 1; }
+  100% { transform: translate(-50%, -110%) scale(0.9) rotate(0); opacity: 0; }
+}
+.spark { position: absolute; left: 0; top: 0; width: calc(var(--s) * 0.16); height: calc(var(--s) * 0.16); margin: calc(var(--s) * -0.08); border-radius: 50%;
+  background: hsl(calc(var(--h) + var(--a)) 95% 65%); animation: spark 0.9s ease-out forwards; }
+@keyframes spark {
+  0% { transform: rotate(var(--a)) translateY(0) scale(1); opacity: 1; }
+  100% { transform: rotate(var(--a)) translateY(calc(var(--s) * -1.1)) scale(0.2); opacity: 0; }
+}
 @keyframes tile-pop {
   0% { transform: scale(0.85); box-shadow: 0 0 0 0 rgb(255 255 255 / 0.9); }
   25% { transform: scale(1.12); box-shadow: 0 0 0 6px rgb(255 255 255 / 0.5); }

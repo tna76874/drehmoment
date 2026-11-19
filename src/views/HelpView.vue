@@ -56,16 +56,16 @@ async function poster() {
     </section>
 
     <section class="panel flex items-center gap-4">
-      <div class="w-24 shrink-0"><AnswerCard :card="12" /></div>
-      <p class="text-sm text-muted">Hier antwortet Karte 12 mit <b class="text-ink">A</b>. Dreht man die Karte um 90° nach links, steht <b class="text-ink">B</b> oben, usw. Die Buchstaben sind klein und grau – Mitschüler:innen können die Antwort kaum ablesen.</p>
+      <div class="w-24 shrink-0"><AnswerCard :card="12" big /></div>
+      <p class="text-sm text-muted">Hier antwortet Karte 12 mit <b class="text-ink">A</b>. Dreht man die Karte um 90° nach links, steht <b class="text-ink">B</b> oben, usw. Auf der gedruckten Karte sind die Buchstaben winzig, und jeder QR-Code ist anders gedreht gedruckt – Mitschüler:innen können die Antwort weder ablesen noch am Muster erkennen. Auch der Scanner zeigt beim Erfassen keine Antwortfarben, nur eine kleine Freude-Animation.</p>
     </section>
 
     <section class="panel">
       <h2 class="mb-2">Tipps für zuverlässiges Scannen</h2>
       <ul class="list-disc space-y-1.5 pl-5 text-sm">
         <li>Karten ruhig und gerade hochhalten, Finger nicht auf den Code.</li>
-        <li>Langsam schwenken – erkannte Karten werden farbig markiert.</li>
-        <li>In großen Räumen: Karten „groß“ drucken (1 pro Seite) oder Zoom nutzen.</li>
+        <li>Langsam schwenken – erkannte Karten werden markiert (ohne die Antwort zu verraten).</li>
+        <li>In großen Räumen hilft der Zoom. Die Karten sind immer groß (1 pro A4-Seite).</li>
         <li>Gegenlicht vermeiden; matte Laminierfolie spiegelt weniger.</li>
         <li>Antwort geändert? Einfach erneut scannen – die neue Antwort zählt. Direkt nach dem Erfassen ist eine Karte 2 Sekunden gesperrt (Karte herunternehmen ändert nichts).</li>
         <li>Die Ausrichtung beim Start des Scannens gilt. Dreht sich das Kamerabild (z. B. iPad), rechnet Drehmoment das anhand der schon erfassten Karten zurück.</li>

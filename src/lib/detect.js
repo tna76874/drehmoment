@@ -7,15 +7,14 @@
 //  4. jeden Code einzeln ausschneiden (Umgebung weiß) und mit jsQR dekodieren
 //  5. aus der Lage der Ecken die Drehung -> Antwort A/B/C/D bestimmen
 import jsQRModule from 'jsqr'
-import { GID_RE } from './gid.js'
+import { parseCardCode } from './cardcode.js'
 import { detectGridCardsIn } from './gridcards.js'
 export { GID_PREFIX, GID_RE, normalizeGid } from './gid.js'
 
 // CJS-Interop (Node vs. Vite)
 const jsQR = typeof jsQRModule === 'function' ? jsQRModule : jsQRModule.default
 
-export const CARD_PREFIX = 'DM:'
-export const CARD_RE = /^DM:(\d{1,3})$/
+export { CARD_PREFIX, CARD_RE, parseCardCode, cardRotation } from './cardcode.js'
 
 export const LETTERS = ['A', 'B', 'C', 'D']
 
@@ -24,16 +23,17 @@ export const LETTERS = ['A', 'B', 'C', 'D']
 const ROTATION_TO_LETTER = ['A', 'D', 'C', 'B']
 
 /** Bestimmt Antwortbuchstabe + Winkel aus einer jsQR-Location. */
-export function orientation(loc, tolerance = 30) {
+/** rot = gedruckter Versatz des QR-Codes gegen die Karte (seit 0.5, siehe cardcode.js) */
+export function orientation(loc, tolerance = 30, rot = 0) {
   const ux = loc.topLeftCorner.x - loc.bottomLeftCorner.x
   const uy = loc.topLeftCorner.y - loc.bottomLeftCorner.y
   // 0° = Code steht aufrecht, positiv = im Uhrzeigersinn gedreht
   let deg = (Math.atan2(ux, -uy) * 180) / Math.PI
   deg = (deg + 360) % 360
-  const idx = Math.round(deg / 90) % 4
+  const idx = Math.round(deg / 90) % 4, k = (idx - rot + 4) % 4
   let dev = Math.abs(deg - idx * 90)
   if (dev > 180) dev = 360 - dev
-  return { letter: dev <= tolerance ? ROTATION_TO_LETTER[idx] : null, angle: deg, deviation: dev }
+  return { letter: dev <= tolerance ? ROTATION_TO_LETTER[k] : null, angle: deg, deviation: dev }
 }
 
 // ---------------------------------------------------------------------------
@@ -264,14 +264,13 @@ function decodeCrop(data, width, height, quad) {
 }
 
 function toResult(r, tolerance) {
-  const m = CARD_RE.exec(r.data)
-  const g = !m && GID_RE.exec(r.data)
-  if (!m && !g) return null
+  const p = parseCardCode(r.data)
+  if (!p) return null
   const loc = r.location
-  const o = orientation(loc, tolerance)
+  const o = orientation(loc, tolerance, p.rot)
   return {
-    card: m ? +m[1] : null,
-    gid: g ? g[1] : null,
+    card: p.card,
+    gid: p.gid,
     answer: o.letter,
     angle: Math.round(o.angle),
     quad: [loc.topLeftCorner, loc.topRightCorner, loc.bottomRightCorner, loc.bottomLeftCorner].map((p) => ({ x: p.x, y: p.y })),

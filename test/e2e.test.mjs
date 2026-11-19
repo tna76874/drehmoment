@@ -9,7 +9,7 @@ import { createServer } from 'node:http'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import assert from 'node:assert/strict'
-import { cardMatrix } from '../src/lib/qr.js'
+import { cardFace } from '../src/lib/qr.js'
 import { encodeSet } from '../src/lib/share.js'
 import { SAMPLE } from '../src/lib/sample.js'
 import { normalizeSet } from '../src/lib/format.js'
@@ -36,7 +36,7 @@ const ROT = { 0: 'A', 90: 'D', 180: 'C', 270: 'B' } // im Uhrzeigersinn gedreht 
 const truth = {}
 const Y = new Uint8Array(W * H).fill(170)
 function draw(n, cx, cy, mod, deg) {
-  const m = cardMatrix(n), size = m.length, quiet = 4, total = size + 2 * quiet
+  const m = cardFace(n).m, size = m.length, quiet = 4, total = size + 2 * quiet
   const a = (deg * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a), half = (total * mod) / 2 * 1.5
   for (let y = Math.floor(cy - half); y < cy + half; y++) for (let x = Math.floor(cx - half); x < cx + half; x++) {
     const dx = x - cx, dy = y - cy

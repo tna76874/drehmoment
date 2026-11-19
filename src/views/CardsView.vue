@@ -6,13 +6,11 @@ import { cardsPdf } from '../lib/pdf.js'
 import { downloadBlob, toast } from '../lib/ui.js'
 import Icon from '../components/Icon.vue'
 import AnswerCard from '../components/AnswerCard.vue'
-import AnswerCardBack from '../components/AnswerCardBack.vue'
 
 const source = ref(route.query.class || 'range')
 const from = ref(1)
 const to = ref(Math.max(30, state.prefs.anonymousCards))
 const busy = ref(false)
-const LAYOUTS = [[1, 'groß', '19 cm'], [2, 'mittel', '14 cm'], [6, 'kompakt', '9 cm']]
 
 // Feste Schüler-Karten: gleiche Karte für dieselbe Person bei allen Lehrkräften (ID z. B. aus der Schulverwaltung)
 const useGid = ref(true)
@@ -36,7 +34,7 @@ async function download() {
   busy.value = true
   await new Promise((r) => setTimeout(r, 30))
   try {
-    const doc = cardsPdf(cards.value, state.prefs.cardsPerPage, { backs: state.prefs.cardBacks })
+    const doc = cardsPdf(cards.value)
     const name = cls.value ? `drehmoment-karten-${cls.value.name}` : `drehmoment-karten-${cards.value[0].card}-${cards.value.at(-1).card}`
     downloadBlob(doc.output('blob'), name.replace(/[^\w-]+/g, '_') + '.pdf')
     toast('PDF erstellt', 'ok')
@@ -48,12 +46,12 @@ async function download() {
   <main class="page space-y-4">
     <section class="panel flex gap-4">
       <div class="relative mt-2 ml-2 w-24 shrink-0 sm:w-28">
-        <div v-if="state.prefs.cardBacks" class="absolute inset-0 -translate-x-2 -translate-y-1 -rotate-[14deg] drop-shadow-lg"><AnswerCardBack :card="7" /></div>
-        <div class="relative translate-x-2 translate-y-2 rotate-[4deg] drop-shadow-xl"><AnswerCard :card="7" /></div>
+        <div class="relative translate-x-2 translate-y-2 rotate-[4deg] drop-shadow-xl"><AnswerCard :card="7" big /></div>
       </div>
       <div class="text-sm">
         <p class="mb-2 font-bold text-base">So funktioniert's</p>
         <p class="text-muted">Die Antwort ist der Buchstabe, der <b class="text-ink">oben</b> steht. Karte drehen, hochhalten – fertig. Die Kamera liest alle Karten gleichzeitig.</p>
+        <p class="mt-2 text-muted">Gegen Abschauen: Die Buchstaben sind winzig, und jeder QR-Code ist anders gedreht gedruckt – am Muster sieht niemand, welche Antwort oben ist.</p>
         <p class="mt-2 text-muted">Karte <b class="text-ink">7</b> ist immer Karte 7: einmal drucken (gerne laminieren) und immer wieder verwenden.</p>
       </div>
     </section>
@@ -80,19 +78,7 @@ async function download() {
         <div><label class="field-label">Von</label><input v-model.number="from" type="number" min="1" max="999" /></div>
         <div><label class="field-label">Bis</label><input v-model.number="to" type="number" min="1" max="999" /></div>
       </div>
-      <div>
-        <label class="field-label">Karten pro A4-Seite</label>
-        <div class="seg w-full">
-          <button v-for="l in LAYOUTS" :key="l[0]" class="flex-1 leading-tight" :class="{ on: state.prefs.cardsPerPage === l[0] }" @click="state.prefs.cardsPerPage = l[0]">
-            {{ l[0] }} · {{ l[1] }}<span class="block text-[11px] font-normal opacity-70">{{ l[2] }} Kante</span>
-          </button>
-        </div>
-        <p class="mt-2 text-xs text-muted">Die Karten werden <b>quadratisch</b> zugeschnitten (gestrichelte Linie + Schnittmarken). Groß = auch aus der letzten Reihe lesbar, kompakt reicht bis ca. 5 m.</p>
-      </div>
-      <label class="check rounded-2xl bg-surface-2 px-4 py-2">
-        <input v-model="state.prefs.cardBacks" type="checkbox" />
-        <span><b class="block">Rückseite bedrucken</b><span class="text-sm text-muted">Standardmäßig aus: So sieht niemand hinter dir, was du antwortest. Eingeschaltet: beidseitig drucken (lange Kante), die Rückseite zeigt die gewählte Antwort groß.</span></span>
-      </label>
+      <p class="text-xs text-muted">Eine große Karte pro A4-Seite (20 cm, <b>quadratisch</b> zuschneiden – gestrichelte Linie + Schnittmarken). Der Code reicht fast über die ganze Breite und ist so auch aus der letzten Reihe lesbar.</p>
       <button class="btn btn-hero btn-lg" :disabled="!cards.length || busy" @click="download">
         <Icon name="download" />{{ busy ? 'Erstelle PDF …' : `PDF herunterladen (${cards.length} Karten)` }}
       </button>
@@ -102,7 +88,6 @@ async function download() {
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <template v-for="c in preview" :key="c.card">
         <div class="rounded-2xl border border-line p-1 shadow-sm"><AnswerCard :card="c.card" :name="c.name" :gid="c.gid" /></div>
-        <div v-if="state.prefs.cardBacks" class="rounded-2xl border border-line p-1 shadow-sm"><AnswerCardBack :card="c.card" :name="c.name" :gid="c.gid" /></div>
       </template>
     </div>
   </main>

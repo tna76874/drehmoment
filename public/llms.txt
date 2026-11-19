@@ -140,14 +140,14 @@ Statt `d=` gehen auch `json=`, `url=`, `b=`, `z=`. Optionen: `&mode=content|link
 ```
 curl -O <BASE>kit/drehmoment-kit.mjs
 node drehmoment-kit.mjs quiz quiz.json quiz.pdf          # A4-Blatt mit Quiz-QR-Code(s)
-node drehmoment-kit.mjs cards 1-30 karten.pdf            # Antwortkarten (--per-page 1|2|6, --backs)
+node drehmoment-kit.mjs cards 1-30 karten.pdf            # Antwortkarten (1 große Karte pro A4-Seite)
 node drehmoment-kit.mjs cards klasse.csv                 # Karten mit Namen aus CSV (Klasse;Nachname;Vorname)
 node drehmoment-kit.mjs link quiz.json --base <BASE>     # Links: Druckseite + Direkt-Import
 node drehmoment-kit.mjs qr quiz.json                     # Inhalt der QR-Codes
 ```
 
 Als Modul: `const kit = await import('./drehmoment-kit.mjs')` →
-`kit.quizPdfBytes(quiz, {mode, maxBytes, start})` (Uint8Array), `kit.quizLinks(quiz, base)`, `kit.cardsPdf(cards, perPage)`,
+`kit.quizPdfBytes(quiz, {mode, maxBytes, start})` (Uint8Array), `kit.quizLinks(quiz, base)`, `kit.cardsPdf(cards)`,
 `kit.qrTexts(set)`, `kit.parseImport(json)`. Erzeugte Codes funktionieren dauerhaft, auch wenn die App umzieht.
 
 ## Quiz direkt öffnen (Deep Links)
@@ -190,7 +190,7 @@ Für Agenten ist `?d=` oder `?json=` mit dem normalen Format einfacher.
 
 ## Kompatibilitätszusage
 
-Alles, was je gedruckt oder geteilt wurde, bleibt lesbar: Antwortkarten (`DM:<n>`, `DM-<ID>`), alle Link-/QR-Formate (`z=`, `b=`, `DMQ…`),
+Alles, was je gedruckt oder geteilt wurde, bleibt lesbar: Antwortkarten (`DM:<n>`, `DM-<ID>`, gedreht `DM+…`/`DM.…`/`DM/…`), alle Link-/QR-Formate (`z=`, `b=`, `DMQ…`),
 Exportdateien und gespeicherte Daten (automatische Migration). Formate werden nur ergänzt, nie geändert;
 eingefrorene Beispiele in `test/compat.test.mjs` sichern das bei jedem Build ab.
 
@@ -202,6 +202,7 @@ Exportdateien der App haben `"app":"drehmoment"`, `"format":1`, `"content":"ques
 
 Jede Karte trägt einen QR-Code (Version 1, Fehlerkorrektur H) mit dem Inhalt `DM:<Nummer>` (1–999).
 Feste Schüler-Karten (seit 0.3): Inhalt `DM-<ID>` mit 7 Zeichen Crockford-Base32 (`0-9A-Z` ohne I, L, O, U), QR alphanumerisch, ebenfalls Version 1-H.
+Gedrehte Karten (seit 0.5): Der QR-Code ist gegen die Karte um r·90° im Uhrzeigersinn gedreht gedruckt (Buchstaben bleiben A oben, B rechts, C unten, D links), damit niemand die Antwort am Muster abliest. Inhalt `DM<s><Nummer|ID>` mit s = `+` (r=1), `.` (r=2), `/` (r=3), QR alphanumerisch, Version 1-H; r=0 nutzt die alten Inhalte `DM:<n>`/`DM-<ID>`. r ist fest pro Karte (`cardRotation` in `src/lib/cardcode.js`). Antwort = Drehung des Codes im Bild minus r.
 Gleiche Person = gleiche Karte bei allen Lehrkräften. Die ID kommt per Klassenimport mit: JSON `{"name":"Anna M.","gid":"17DWY6F"}`
 oder kompakt `k:[[klasse, [namen], [karten], [ids|0]]]`. Empfohlene Ableitung aus einer stabilen Kennung:
 die ersten 35 Bit von `SHA-256("drehmoment|" + kennung)` als Crockford-Base32 (MSB zuerst), z. B. `x3k9mpq2` -> `17DWY6F`.

@@ -2,7 +2,7 @@
 // in synthetische Kamerabilder und prüft Kartennummer + erkannte Antwort.
 //   node test/detect.test.mjs
 import qrcode from 'qrcode-generator'
-import { cardMatrix } from '../src/lib/qr.js'
+import { cardMatrix, cardFace } from '../src/lib/qr.js'
 import { detectCards } from '../src/lib/detect.js'
 import assert from 'node:assert/strict'
 
@@ -10,8 +10,8 @@ const W = 1280, H = 720
 const blank = () => new Uint8ClampedArray(W * H * 4).fill(190)
 const EXPECT = { 0: 'A', 90: 'D', 180: 'C', 270: 'B' } // Drehung im Uhrzeigersinn -> Kante oben
 
-function drawMatrix(img, m, cx, cy, mod, deg, squash = 1) {
-  const size = m.length, quiet = 4, total = size + 2 * quiet
+function drawMatrix(img, m, cx, cy, mod, deg, squash = 1, quiet = 4) {
+  const size = m.length, total = size + 2 * quiet
   const a = (deg * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a)
   const half = (total * mod) / 2 * 1.5
   for (let y = Math.floor(cy - half); y < cy + half; y++) for (let x = Math.floor(cx - half); x < cx + half; x++) {
@@ -94,6 +94,27 @@ t('feste Schüler-Karten (DM-XXXXXXX) in allen Lagen, gemischt mit Nummernkarten
     const got = Object.fromEntries(r.map((x) => [x.gid || x.card, x.answer]))
     assert.deepEqual(got, { ...Object.fromEntries(ids.map((g) => [g, EXPECT[base]])), 12: EXPECT[base] }, `Drehung ${base}°`)
     assert.ok(r.filter((x) => x.gid).every((x) => x.card === null))
+  }
+})
+
+
+console.log('Gedrehte Karten (seit 0.5, QR fest pro Karte gegen die Buchstaben gedreht, 2 Module Rand, dunkler Hintergrund):')
+t('alle vier Versätze, alle vier Kanten oben, Nummern- und Schüler-Karten', () => {
+  for (const id of [1, 2, 3, 4, 5, 6, 7, 8, 9, 40, 123, '17DWY6F', 'CTQZ5XY']) for (const rot of [0, 1, 2, 3]) for (const base of [0, 90, 180, 270]) {
+    const img = new Uint8ClampedArray(W * H * 4).fill(40) // dunkler Pulli hinter der Karte
+    drawMatrix(img, cardFace(id, rot).m, 640, 360, 12, base + 6, 1, 2); camera(img, 20)
+    const r = detectCards(img, W, H)
+    assert.equal(r.length, 1, `${id} r=${rot} ${base}°`)
+    assert.equal(typeof id === 'string' ? r[0].gid : r[0].card, id)
+    assert.equal(r[0].answer, EXPECT[base], `${id} r=${rot} ${base}°: ${r[0].answer}`)
+  }
+})
+t('Karte formatfüllend vor der Kamera (QR fast über das ganze Bild)', () => {
+  for (const base of [0, 90, 180, 270]) {
+    const img = new Uint8ClampedArray(W * H * 4).fill(60)
+    drawMatrix(img, cardFace(11).m, 640, 360, 27, base + 3, 1, 2); camera(img, 20)
+    const r = detectCards(img, W, H)
+    assert.equal(r.length, 1); assert.equal(r[0].card, 11); assert.equal(r[0].answer, EXPECT[base])
   }
 })
 

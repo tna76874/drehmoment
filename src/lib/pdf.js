@@ -1,7 +1,7 @@
 // PDF-Export mit jsPDF: Antwortkarten + Auswertungsberichte. Läuft komplett offline.
 import { jsPDF } from 'jspdf'
 import { autoTable } from 'jspdf-autotable'
-import { cardMatrix } from './qr.js'
+import { cardMatrix, cardFace } from './qr.js'
 import { formatGid } from './gid.js'
 import { splitMath, plainMath } from './math.js'
 import { drawMath } from './mathpdf.js'
@@ -21,126 +21,75 @@ const L = ['A', 'B', 'C', 'D']
 
 // ============================================================ Antwortkarten
 /**
- * QUADRATISCHE Karten (mm, y nach unten) auf A4 – zum Zuschneiden entlang der Linien.
- * 1: 194 mm · 2: 140 mm · 4: 97 mm (älter) · 6: 93 mm. Gitter mittig auf der Seite.
+ * EINE große quadratische Karte pro A4-Seite (200 mm, zum Zuschneiden). Der QR-Code nimmt fast die ganze
+ * Breite ein (21 von 25 Modulen, ringsum 2 Module weißer Rand) -> auch aus der letzten Reihe lesbar.
+ * Die früheren kleineren Formate (2/6 pro Seite) und die Rückseite gibt es seit 0.5 nicht mehr.
  */
-export const CARD_GRIDS = { 1: [1, 1, 194], 2: [1, 2, 140], 4: [2, 2, 97], 6: [2, 3, 93] }
-export function cardSlots(perPage) {
-  const [cols, rows, side] = CARD_GRIDS[perPage] || CARD_GRIDS[1]
-  const x0 = (210 - cols * side) / 2, y0 = (297 - rows * side) / 2
-  return Array.from({ length: cols * rows }, (_, i) => ({ x: x0 + (i % cols) * side, y: y0 + Math.floor(i / cols) * side, w: side, h: side }))
+export const CARD_SIDE = 200
+export function cardSlots() {
+  return [{ x: (210 - CARD_SIDE) / 2, y: (297 - CARD_SIDE) / 2, w: CARD_SIDE, h: CARD_SIDE }]
 }
 
-/** Schnittmarken in den Seitenrand (nur dort, wo keine andere Karte liegt) */
-function cropMarks(doc, slots) {
-  const inside = (x, y) => slots.some((s) => x > s.x + 0.1 && x < s.x + s.w - 0.1 && y > s.y + 0.1 && y < s.y + s.h - 0.1)
+/** Schnittmarken in den Seitenrand */
+function cropMarks(doc, s) {
   doc.setDrawColor(0); doc.setLineWidth(0.25)
   const L = 5, g = 1.5
-  for (const s of slots) for (const [cx, cy] of [[s.x, s.y], [s.x + s.w, s.y], [s.x, s.y + s.h], [s.x + s.w, s.y + s.h]]) {
+  for (const [cx, cy] of [[s.x, s.y], [s.x + s.w, s.y], [s.x, s.y + s.h], [s.x + s.w, s.y + s.h]]) {
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
       const ex = cx + dx * (g + L), ey = cy + dy * (g + L)
-      if (ex < 2 || ex > 208 || ey < 2 || ey > 295) continue
-      if (inside(cx + dx * (g + L / 2) + dy * 0.5, cy + dy * (g + L / 2) + dx * 0.5) || inside(cx + dx * (g + L / 2) - dy * 0.5, cy + dy * (g + L / 2) - dx * 0.5)) continue
+      if (ex < 1 || ex > 209 || ey < 2 || ey > 295) continue
+      if (dx && cx + dx * g > s.x && cx + dx * g < s.x + s.w) continue // nicht in die Karte
+      if (dy && cy + dy * g > s.y && cy + dy * g < s.y + s.h) continue
       doc.line(cx + dx * g, cy + dy * g, ex, ey)
     }
   }
 }
 
 /**
- * Feste Geometrie einer Karte. Wird auch für die Bildschirm-Vorschau verwendet,
- * damit Druck und Vorschau identisch sind.
- * Buchstaben: A oben, B rechts, C unten, D links – jeweils lesbar, wenn diese Kante oben ist.
+ * Feste Geometrie einer Karte (auch für die Bildschirm-Vorschau, damit Druck und Vorschau identisch sind).
+ * Buchstaben: A oben, B rechts, C unten, D links – klein, jeweils lesbar, wenn diese Kante oben ist.
+ * Nummer/Name stehen klein an ALLEN vier Kanten gleich (sonst verriete ihre Lage, wie die Karte gehalten wird).
  */
 export function cardLayout(slot) {
   const side = Math.min(slot.w, slot.h)
-  const qr = side * 0.62
+  const qr = (side * 21) / 25
   const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2
-  const letterPt = (side * 0.085) / PT
-  const gap = qr / 2 + side * 0.07
-  return {
-    side, qr, cx, cy, letterPt, gap,
-    letters: [
-      { L: 'A', angle: 0, x: cx, y: cy - gap },
-      { L: 'B', angle: -90, x: cx + gap, y: cy },
-      { L: 'C', angle: 180, x: cx, y: cy + gap },
-      { L: 'D', angle: 90, x: cx - gap, y: cy },
-    ],
-  }
+  const gap = qr / 2 + (side - qr) / 4 // Mitte des weißen Rands
+  const letterPt = (side * 0.018) / PT
+  const infoPt = (side * 0.0105) / PT
+  const sides = [
+    { L: 'A', angle: 0, ux: 1, uy: 0, x: cx, y: cy - gap },
+    { L: 'B', angle: -90, ux: 0, uy: 1, x: cx + gap, y: cy },
+    { L: 'C', angle: 180, ux: -1, uy: 0, x: cx, y: cy + gap },
+    { L: 'D', angle: 90, ux: 0, uy: -1, x: cx - gap, y: cy },
+  ]
+  // Info-Text: linksbündig ab dem Anfang des QR-Codes (in Leserichtung der jeweiligen Kante)
+  for (const s of sides) { s.ix = s.x - s.ux * (qr / 2); s.iy = s.y - s.uy * (qr / 2) }
+  return { side, qr, cx, cy, letterPt, infoPt, gap, letters: sides }
 }
 
-/** Text mittig auf (x,y) setzen, um angle° gedreht (gegen den Uhrzeigersinn) */
-function centeredText(doc, str, x, y, angle, pt) {
+/** Text um angle° gedreht (gegen den Uhrzeigersinn) an (x,y) setzen: vertikal mittig, anchor 0 = links, 0.5 = Mitte */
+function centeredText(doc, str, x, y, angle, pt, anchor = 0.5) {
   const capH = pt * PT * 0.72
   const a = (angle * Math.PI) / 180
   const w = doc.getTextWidth(str)
   const dir = { x: Math.cos(a), y: -Math.sin(a) } // Schreibrichtung (y nach unten)
   const up = { x: -Math.sin(a), y: -Math.cos(a) }
-  doc.text(str, x - (w / 2) * dir.x - (capH / 2) * up.x, y - (w / 2) * dir.y - (capH / 2) * up.y, { angle })
+  doc.text(str, x - w * anchor * dir.x - (capH / 2) * up.x, y - w * anchor * dir.y - (capH / 2) * up.y, { angle })
 }
 
-/**
- * Rückseite (für Duplexdruck, an der langen Kante gespiegelt).
- * Die Person hinter der Karte sieht: A oben, B LINKS, C unten, D RECHTS –
- * genau die Antwort, die gerade oben steht, ist für sie aufrecht lesbar.
- */
-export function backLayout(slot) {
-  const inset = Math.min(slot.w, slot.h) * 0.035
-  const r = { x: slot.x + inset, y: slot.y + inset, w: slot.w - 2 * inset, h: slot.h - 2 * inset }
-  const cx = r.x + r.w / 2, cy = r.y + r.h / 2
-  const side = Math.min(r.w, r.h)
-  const k = 0.62 // Lage der Buchstaben zwischen Mitte und Rand
-  return {
-    r, cx, cy, side,
-    letterPt: (side * 0.2) / PT,
-    disc: side * 0.17,
-    wedges: [
-      { L: 'A', angle: 0, pts: [[r.x, r.y], [r.x + r.w, r.y]], x: cx, y: cy - (r.h / 2) * k },
-      { L: 'B', angle: 90, pts: [[r.x, r.y + r.h], [r.x, r.y]], x: cx - (r.w / 2) * k, y: cy },
-      { L: 'C', angle: 180, pts: [[r.x + r.w, r.y + r.h], [r.x, r.y + r.h]], x: cx, y: cy + (r.h / 2) * k },
-      { L: 'D', angle: -90, pts: [[r.x + r.w, r.y], [r.x + r.w, r.y + r.h]], x: cx + (r.w / 2) * k, y: cy },
-    ],
-  }
-}
+/** Beschriftung einer Karte (Vorschau + PDF) */
+export const cardInfo = (n, name, gid) => [gid ? formatGid(gid) : 'Nr. ' + n, name].filter(Boolean).join(' · ')
 
-const tint = (c, t) => c.map((v) => Math.round(255 - (255 - v) * t))
-
-function drawBack(doc, n, name, slot, gid) {
-  const lay = backLayout(slot)
-  for (const w of lay.wedges) {
-    const [[x1, y1], [x2, y2]] = w.pts
-    doc.setFillColor(...tint(ANS[w.L], 0.2))
-    doc.triangle(x1, y1, x2, y2, lay.cx, lay.cy, 'F')
-  }
-  // feine weiße Diagonalen trennen die Felder
-  doc.setDrawColor(255); doc.setLineWidth(lay.side * 0.012)
-  doc.line(lay.r.x, lay.r.y, lay.r.x + lay.r.w, lay.r.y + lay.r.h)
-  doc.line(lay.r.x + lay.r.w, lay.r.y, lay.r.x, lay.r.y + lay.r.h)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(lay.letterPt)
-  for (const w of lay.wedges) { doc.setTextColor(...ANS[w.L]); centeredText(doc, w.L, w.x, w.y, w.angle, lay.letterPt) }
-  // Mitte: Kartennummer
-  doc.setFillColor(255, 255, 255); doc.circle(lay.cx, lay.cy, lay.disc, 'F')
-  const numPt = (lay.disc * (gid ? 0.36 : 0.95)) / PT
-  doc.setTextColor(...INK); doc.setFontSize(numPt)
-  centeredText(doc, gid ? formatGid(gid) : String(n), lay.cx, lay.cy - (name ? lay.disc * 0.18 : 0), 0, numPt)
-  const small = (lay.side * 0.028) / PT
-  if (name) {
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(small); doc.setTextColor(...MUTED)
-    centeredText(doc, doc.splitTextToSize(name, lay.disc * 1.7)[0], lay.cx, lay.cy + lay.disc * 0.55, 0, small)
-  }
-  // Hinweis unter der Mitte
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(small * 0.75); doc.setTextColor(...MUTED)
-  centeredText(doc, 'Deine Antwort steht oben', lay.cx, lay.cy + lay.disc + lay.side * 0.04, 0, small * 0.75)
-}
-
-/** n = Kartennummer; gid = feste Schüler-ID (dann steht die ID im QR-Code und oben links) */
+/** n = Kartennummer; gid = feste Schüler-ID (dann steht die ID im QR-Code) */
 function drawCard(doc, n, name, slot, gid) {
   const lay = cardLayout(slot)
   // Schnittlinie (quadratisch)
   doc.setDrawColor(170); doc.setLineWidth(0.2); doc.setLineDashPattern([1.5, 1.5], 0)
   doc.rect(slot.x, slot.y, slot.w, slot.h)
   doc.setLineDashPattern([], 0)
-  // QR-Code (horizontale Läufe zusammengefasst)
-  const m = cardMatrix(gid || n), size = m.length, mod = lay.qr / size
+  // QR-Code, fest pro Karte gedreht (horizontale Läufe zusammengefasst)
+  const { m } = cardFace(gid || n), size = m.length, mod = lay.qr / size
   const x0 = lay.cx - lay.qr / 2, y0 = lay.cy - lay.qr / 2
   doc.setFillColor(0, 0, 0)
   for (let r = 0; r < size; r++) {
@@ -153,43 +102,27 @@ function drawCard(doc, n, name, slot, gid) {
       c = e
     }
   }
-  // Buchstaben – zentriert auf ihren Punkt, gedreht
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(lay.letterPt); doc.setTextColor(120)
+  // Buchstaben – klein, zentriert auf ihren Punkt, gedreht
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(lay.letterPt); doc.setTextColor(110)
   for (const t of lay.letters) centeredText(doc, t.L, t.x, t.y, t.angle, lay.letterPt)
-  // Nummer + Name + Marke
-  const small = lay.side * 0.032 / PT
-  doc.setFontSize(small); doc.setTextColor(40)
-  doc.text(gid ? formatGid(gid) : String(n), slot.x + 4, slot.y + 4 + small * PT)
-  if (name) {
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(small * 0.8)
-    doc.text(name.slice(0, 40), slot.x + 4, slot.y + slot.h - 4)
-  }
-  const ls = Math.max(3, lay.side * 0.03) // nur das Logo, dezent
-  drawLogo(doc, slot.x + slot.w - 4 - ls, slot.y + slot.h - 4 - ls * 0.9, ls, { opacity: 0.55 })
+  // Nummer + Name an allen vier Kanten
+  const info = cardInfo(n, name && name.slice(0, 40), gid)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(lay.infoPt); doc.setTextColor(120)
+  for (const t of lay.letters) centeredText(doc, info, t.ix, t.iy, t.angle, lay.infoPt, 0)
 }
 
-/** @param {{card:number,name?:string,gid?:string}[]} cards  gid gesetzt -> feste Schüler-Karte */
-export function cardsPdf(cards, perPage = 1, { backs = false } = {}) { // Rückseite standardmäßig aus
+/** @param {{card:number,name?:string,gid?:string}[]} cards  gid gesetzt -> feste Schüler-Karte. Weitere Argumente (früher: Karten pro Seite, Rückseite) werden ignoriert. */
+export function cardsPdf(cards) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
   doc.setProperties({ title: 'Drehmoment – Antwortkarten', creator: 'Drehmoment' })
-  const slots = cardSlots(perPage)
-  for (let p = 0; p < cards.length; p += slots.length) {
-    const page = cards.slice(p, p + slots.length)
-    if (p > 0) doc.addPage()
-    page.forEach((c, i) => drawCard(doc, c.card, c.name, slots[i], c.gid))
-    cropMarks(doc, slots.slice(0, page.length))
-    const bottom = Math.max(...slots.map((s) => s.y + s.h))
-    if (297 - bottom > 14) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150)
-      doc.text(backs ? 'Quadratisch zuschneiden · beidseitig drucken (lange Kante)' : 'Quadratisch zuschneiden · festes Papier/Karton (ab 160 g/m²), damit nichts durchscheint',
-        105, bottom + 9, { align: 'center' })
-    }
-    if (backs) {
-      // Rückseite: an der langen Kante gespiegelt -> Spalten tauschen
-      doc.addPage()
-      page.forEach((c, i) => { const s = slots[i]; drawBack(doc, c.card, c.name, { ...s, x: 210 - s.x - s.w }, c.gid) })
-    }
-  }
+  const [slot] = cardSlots()
+  cards.forEach((c, i) => {
+    if (i > 0) doc.addPage()
+    drawCard(doc, c.card, c.name, slot, c.gid)
+    cropMarks(doc, slot)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150)
+    doc.text('Quadratisch zuschneiden · festes Papier/Karton (ab 160 g/m²), damit nichts durchscheint', 105, slot.y + slot.h + 9, { align: 'center' })
+  })
   return doc
 }
 

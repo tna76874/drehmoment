@@ -93,6 +93,25 @@ ok('Base45 (RFC 9285)')
 assert.ok(CARD_RE.test(FIX.card7) && CARD_RE.exec('DM:123')[1] === '123')
 assert.equal(cardMatrix(7).length, 21, 'Karten bleiben QR-Version 1')
 ok('Antwortkarten-Format DM:<n> unverändert')
+{
+  // Gedrehte Karten (seit 0.5) – EINGEFROREN: Inhalt, Versatz pro Karte, Lesen aller Formate
+  const { cardRotation, cardCode, parseCardCode } = await import('../src/lib/cardcode.js')
+  const { cardFace } = await import('../src/lib/qr.js')
+  assert.equal(Array.from({ length: 40 }, (_, i) => cardRotation(i + 1)).join(''), '1003210320122012312032132101030120023233')
+  assert.equal(cardRotation('17DWY6F'), 2); assert.equal(cardRotation('CTQZ5XY'), 0)
+  assert.equal(cardCode(7).text, 'DM:7'); assert.equal(cardCode(12).text, 'DM.12'); assert.equal(cardCode(1).text, 'DM+1'); assert.equal(cardCode(4).text, 'DM/4')
+  assert.equal(cardCode('17DWY6F').text, 'DM.17DWY6F'); assert.equal(cardCode('CTQZ5XY').text, 'DM-CTQZ5XY')
+  const P = (t) => JSON.stringify(parseCardCode(t))
+  assert.equal(P('DM:7'), '{"card":7,"gid":null,"rot":0}')
+  assert.equal(P('DM-17DWY6F'), '{"card":null,"gid":"17DWY6F","rot":0}')
+  assert.equal(P('DM+123'), '{"card":123,"gid":null,"rot":1}')
+  assert.equal(P('DM.12'), '{"card":12,"gid":null,"rot":2}')
+  assert.equal(P('DM/17DWY6F'), '{"card":null,"gid":"17DWY6F","rot":3}')
+  for (const bad of ['DM*7', 'DM+1234', 'DM.17DWY6U', 'DMQ:R80', 'DM+']) assert.equal(parseCardCode(bad), null, bad)
+  for (const id of [1, 99, 999, '17DWY6F', 'ZZZZZZZ']) for (const r of [0, 1, 2, 3]) assert.equal(cardFace(id, r).m.length, 21, 'Version 1')
+  assert.deepEqual(cardFace(7).m, cardMatrix(7), 'Versatz 0 = alte Karte, identisch gedruckt')
+}
+ok('Gedrehte Karten DM+/DM./DM/ (seit 0.5), alte Formate weiter lesbar')
 
 // ------------------------------------------------------------------ Gespeicherte Daten (localStorage)
 {

@@ -4,23 +4,27 @@ import { cardsPdf, reportPdf, cardLayout, cardSlots } from '../src/lib/pdf.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 
 const strip = (s) => s.replace(/\/CreationDate \([^)]*\)/g, '').replace(/\/ID \[[^\]]*\]/g, '')
-const a = cardsPdf([{ card: 1 }, { card: 2, name: 'Jörg Müßig' }], 2).output()
-const b = cardsPdf([{ card: 1 }, { card: 2, name: 'Jörg Müßig' }], 2).output()
+const a = cardsPdf([{ card: 1 }, { card: 2, name: 'Jörg Müßig' }]).output()
+const b = cardsPdf([{ card: 1 }, { card: 2, name: 'Jörg Müßig' }]).output()
 assert.equal(strip(a), strip(b), 'Kartensatz muss bei jedem Export identisch sein')
 assert.ok(a.startsWith('%PDF-'))
 console.log('  ✓ Kartensatz deterministisch')
 
-// Geometrie: A oben, B rechts, C unten, D links
-for (const per of [1, 2, 4, 6]) for (const slot of cardSlots(per)) {
+// Geometrie: eine große Karte pro Seite, QR fast über die ganze Breite, A oben, B rechts, C unten, D links
+{
+  const slots = cardSlots()
+  assert.equal(slots.length, 1)
+  const [slot] = slots
   assert.equal(slot.w, slot.h, 'Karten sind quadratisch')
   assert.ok(slot.x >= 5 && slot.y >= 5 && slot.x + slot.w <= 205 && slot.y + slot.h <= 292, 'innerhalb des Druckbereichs')
   const l = cardLayout(slot), get = (x) => l.letters.find((t) => t.L === x)
+  assert.ok(l.qr >= 160, 'QR-Code mindestens 16 cm')
   assert.ok(get('A').y < l.cy && get('C').y > l.cy && get('B').x > l.cx && get('D').x < l.cx)
-  assert.ok(l.gap > l.qr / 2, 'Buchstaben liegen außerhalb des QR-Codes')
+  assert.ok(l.gap > l.qr / 2 && l.gap < l.side / 2, 'Buchstaben im Rand zwischen QR und Schnittkante')
+  assert.ok(l.letterPt * 0.3528 < 5, 'Buchstaben klein (< 5 mm)')
+  assert.equal(cardsPdf([{ card: 1 }, { card: 2 }, { card: 3 }], 6, { backs: true }).getNumberOfPages(), 3, 'eine Karte pro Seite, keine Rückseiten (alte Optionen werden ignoriert)')
 }
-console.log('  ✓ Quadratische Karten, Buchstaben-Anordnung A↑ B→ C↓ D←')
-assert.equal(cardsPdf([{ card: 1 }, { card: 2 }], 6).getNumberOfPages(), 1, 'ohne Rückseite: nur Vorderseiten (Standard)')
-console.log('  ✓ Standard ohne Rückseite')
+console.log('  ✓ 1 Karte/Seite, QR ≥ 16 cm, kleine Buchstaben A↑ B→ C↓ D←, keine Rückseite')
 
 const session = {
   title: 'Photosynthese – Grundlagen', className: '7b', startedAt: Date.now(),
@@ -36,9 +40,8 @@ const rep = reportPdf(session)
 assert.ok(rep.getNumberOfPages() >= 2)
 mkdirSync('test/out', { recursive: true })
 writeFileSync('test/out/bericht.pdf', Buffer.from(rep.output('arraybuffer')))
-writeFileSync('test/out/karten.pdf', Buffer.from(cardsPdf(Array.from({ length: 8 }, (_, i) => ({ card: i + 1, name: i ? '' : 'Max Mustermann' })), 6).output('arraybuffer')))
-writeFileSync('test/out/karten-1.pdf', Buffer.from(cardsPdf([{ card: 7, name: 'Bea' }], 1).output('arraybuffer')))
-writeFileSync('test/out/karten-schueler.pdf', Buffer.from(cardsPdf([{ card: 3, name: 'Anna M.', gid: '17DWY6F' }, { card: 4, name: 'Ben K.' }], 6, { backs: true }).output('arraybuffer')))
+writeFileSync('test/out/karten.pdf', Buffer.from(cardsPdf(Array.from({ length: 4 }, (_, i) => ({ card: i + 1, name: i ? '' : 'Max Mustermann' }))).output('arraybuffer')))
+writeFileSync('test/out/karten-schueler.pdf', Buffer.from(cardsPdf([{ card: 3, name: 'Anna M.', gid: '17DWY6F' }, { card: 4, name: 'Ben K.' }]).output('arraybuffer')))
 console.log('  ✓ Feste Schüler-Karten (test/out/karten-schueler.pdf)')
 {
   const { loadMathRenderer } = await import('../src/lib/mathpdf.js')
@@ -50,17 +53,6 @@ console.log('  ✓ Feste Schüler-Karten (test/out/karten-schueler.pdf)')
   console.log('  ✓ LaTeX im Bericht als Vektorgrafik (test/out/bericht-latex.pdf)')
 }
 console.log('  ✓ Bericht erzeugt (test/out/bericht.pdf), Karten (test/out/karten.pdf)')
-
-// Rückseiten: Duplex, je Vorderseite eine gespiegelte Rückseite
-{
-  const d = cardsPdf([1, 2, 3, 4, 5].map((card) => ({ card, name: card === 2 ? 'Bea' : '' })), 4, { backs: true })
-  assert.equal(d.getNumberOfPages(), 4, '2 Vorder- + 2 Rückseiten')
-  writeFileSync('test/out/karten-duplex.pdf', Buffer.from(d.output('arraybuffer')))
-  const { backLayout } = await import('../src/lib/pdf.js')
-  const b = backLayout({ x: 0, y: 0, w: 100, h: 100 }), at = (L) => b.wedges.find((w) => w.L === L)
-  assert.ok(at('A').y < b.cy && at('C').y > b.cy && at('B').x < b.cx && at('D').x > b.cx, 'Rückseite: A↑ B← C↓ D→')
-  console.log('  ✓ Rückseiten (Duplex, gespiegelt: A↑ B← C↓ D→)')
-}
 
 // Quiz-QR als PDF: höchstens Vorder- + Rückseite, auch bei großen Quizzen
 {

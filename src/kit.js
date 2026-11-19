@@ -65,7 +65,7 @@ async function cli(argv) {
       const list = only ? c.filter((x) => x.name === only) : c
       cards = list.flatMap((cl) => displayNames(cl.students, !!flag('full-name')).map((name, i) => ({ card: i + 1, name: `${name} (${cl.name})` })))
     }
-    write(out || 'karten.pdf', new Uint8Array(cardsPdf(cards, +(flag('per-page') || 1), { backs: !!flag('backs') }).output('arraybuffer')))
+    write(out || 'karten.pdf', new Uint8Array(cardsPdf(cards).output('arraybuffer')))
   } else if (cmd === 'link' && src) {
     const base = flag('base')
     if (!base || base === true) throw new Error('--base <Adresse der Drehmoment-App> fehlt')
@@ -88,8 +88,8 @@ async function cli(argv) {
 
   quiz  <quiz.json> [out.pdf] [--size 300|500|2000] [--no-start] [--link --base <URL>]
         A4-Blatt mit Quiz-QR-Code(s); Standard: nur Inhalt (ohne Web-Adresse, dauerhaft gültig)
-  cards <von-bis | klasse.csv> [out.pdf] [--per-page 1|2|6] [--backs] [--class 7b] [--full-name]
-        Antwortkarten (quadratisch zuschneiden)
+  cards <von-bis | klasse.csv> [out.pdf] [--class 7b] [--full-name]
+        Antwortkarten (1 große Karte pro A4-Seite, quadratisch zuschneiden)
   link  <quiz.json> --base <URL> [--no-start]
         Links zur Druckseite und zum Direkt-Import
   classlink <klasse.csv | klassen.json> --base <URL> [--full-name]
