@@ -9,8 +9,13 @@ PORT   ?= 8080
 DEV_PORT ?= 5173
 NODE_IMAGE ?= node:24-bookworm-slim
 
+SVG_SRC      := public/icon.svg
+FAVICON_SVG  := public/favicon.svg
+ICON_192     := public/icon-192.png
+ICON_512     := public/icon-512.png
+
 .DEFAULT_GOAL := help
-.PHONY: build dist run watch test clean help install dev build-local preview test-local e2e-local
+.PHONY: build dist run watch test clean help install dev build-local preview test-local e2e-local icons
 
 ## --- Docker (regulär) -------------------------------------------------
 
@@ -54,6 +59,39 @@ test-local: node_modules ## Alle Unit-Tests (test/*.test.mjs ohne e2e-*, automat
 e2e-local: build-local ## Alles: Unit-Tests, Build, Browser-Tests (= build-local)
 
 ## --- Sonstiges --------------------------------------------------------
+
+icons: $(FAVICON_SVG) $(ICON_192) $(ICON_512) ## Icons aus public/icon.svg neu generieren
+
+$(FAVICON_SVG): $(SVG_SRC)
+	cp "$(SVG_SRC)" "$(FAVICON_SVG)"
+
+$(ICON_192): $(SVG_SRC)
+	@if command -v rsvg-convert >/dev/null 2>&1; then \
+		rsvg-convert -w 192 -h 192 "$(SVG_SRC)" -o "$(ICON_192)"; \
+	elif command -v magick >/dev/null 2>&1; then \
+		magick -background none -density 300 "$(SVG_SRC)" -resize 192x192! "$(ICON_192)"; \
+	elif command -v convert >/dev/null 2>&1; then \
+		convert -background none -density 300 "$(SVG_SRC)" -resize 192x192! "$(ICON_192)"; \
+	elif command -v resvg >/dev/null 2>&1; then \
+		resvg -w 192 -h 192 "$(SVG_SRC)" "$(ICON_192)"; \
+	else \
+		echo "Kein SVG-zu-PNG-Tool gefunden (rsvg-convert, magick, convert oder resvg installieren)." >&2; \
+		exit 1; \
+	fi
+
+$(ICON_512): $(SVG_SRC)
+	@if command -v rsvg-convert >/dev/null 2>&1; then \
+		rsvg-convert -w 512 -h 512 "$(SVG_SRC)" -o "$(ICON_512)"; \
+	elif command -v magick >/dev/null 2>&1; then \
+		magick -background none -density 300 "$(SVG_SRC)" -resize 512x512! "$(ICON_512)"; \
+	elif command -v convert >/dev/null 2>&1; then \
+		convert -background none -density 300 "$(SVG_SRC)" -resize 512x512! "$(ICON_512)"; \
+	elif command -v resvg >/dev/null 2>&1; then \
+		resvg -w 512 -h 512 "$(SVG_SRC)" "$(ICON_512)"; \
+	else \
+		echo "Kein SVG-zu-PNG-Tool gefunden (rsvg-convert, magick, convert oder resvg installieren)." >&2; \
+		exit 1; \
+	fi
 
 clean: ## Build-Artefakte entfernen
 	rm -rf dist test/out
